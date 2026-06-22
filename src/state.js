@@ -29,7 +29,7 @@ class AppState {
     const today = new Date();
     const diffTime = today - startDate;
     const diffDays = Math.floor(diffTime / (24 * 60 * 60 * 1000)) + 1;
-    return (diffDays >= 1 && diffDays <= 30) ? diffDays : 1; // Default to Day 1 if outside range
+    return (diffDays >= 1 && diffDays <= 21) ? diffDays : 1; // Default to Day 1 if outside range
   }
 
   // Set the active day index and save it to settings
@@ -116,6 +116,19 @@ class AppState {
   // Fetch lists directly from IndexedDB
   async fetchData() {
     this.days = await db.days.orderBy('dayIndex').toArray();
+
+    // Trim days database to 21 days if it was previously 30 days
+    if (this.days.length > 21) {
+      this.days = this.days.slice(0, 21);
+      const datesToDelete = [];
+      await db.days.where('dayIndex').above(21).each(day => {
+        datesToDelete.push(day.date);
+      });
+      if (datesToDelete.length > 0) {
+        await db.days.bulkDelete(datesToDelete);
+      }
+    }
+
     this.nonNegotiables = await db.nonNegotiables.toArray();
     this.nonNegotiables.sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
 

@@ -72,7 +72,7 @@ export function renderCalendar(container, state) {
       <div class="card" style="margin-bottom: 0;">
         <div class="card-title" style="margin-bottom:20px;">
           <span>July 2026</span>
-          <span style="font-size:12px; color:var(--text-muted); font-family:var(--font-mono)">Challenge Days 19 - 30</span>
+          <span style="font-size:12px; color:var(--text-muted); font-family:var(--font-mono)">Challenge Days 19 - 21</span>
         </div>
         <div class="calendar-grid-wrapper">
           <div class="calendar-grid" style="grid-template-columns: repeat(7, 1fr);">

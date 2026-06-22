@@ -198,7 +198,7 @@ export function renderAnalytics(container, state) {
 
       <div class="stat-card">
         <span class="stat-label">Total Days Active</span>
-        <span class="stat-value">${interactedDaysCount} / 30</span>
+        <span class="stat-value">${interactedDaysCount} / 21</span>
         <span class="stat-desc">Days with logged activity</span>
       </div>
     </div>

@@ -45,8 +45,6 @@ export function renderPlanner(container, state) {
           <button class="btn btn-secondary btn-sm jump-week-btn" data-start="1">Week 1</button>
           <button class="btn btn-secondary btn-sm jump-week-btn" data-start="8">Week 2</button>
           <button class="btn btn-secondary btn-sm jump-week-btn" data-start="15">Week 3</button>
-          <button class="btn btn-secondary btn-sm jump-week-btn" data-start="22">Week 4</button>
-          <button class="btn btn-secondary btn-sm jump-week-btn" data-start="29">Week 5</button>
         </div>
       </div>
       <div style="display: flex; gap: 6px;" id="grid-scroll-controls">
@@ -654,7 +652,7 @@ function renderListSubView(container, state) {
         <div class="day-card-header" data-date="${day.date}">
           <div class="day-header-info">
             <span class="day-header-title">${day.label}</span>
-            <span class="day-header-subtitle">Day ${day.dayIndex} of 30</span>
+            <span class="day-header-subtitle">Day ${day.dayIndex} of 21</span>
             <span style="font-size:13px; color:var(--text-secondary);">${day.weekday}</span>
           </div>
           
