@@ -25,7 +25,7 @@ class AppState {
     if (this.activeDayIndex !== null && this.activeDayIndex !== undefined) {
       return this.activeDayIndex;
     }
-    const startDate = new Date(2026, 5, 13);
+    const startDate = new Date(2026, 5, 22);
     const today = new Date();
     const diffTime = today - startDate;
     const diffDays = Math.floor(diffTime / (24 * 60 * 60 * 1000)) + 1;

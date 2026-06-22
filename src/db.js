@@ -17,12 +17,13 @@ export function getFormattedDate(year, month, day) {
 }
 
 // Generate the 21 dates in the challenge
+// Generate the 21 dates in the challenge
 export function generateChallengeDates() {
   const dates = [];
-  // Start: June 13, 2026
-  // End: July 3, 2026
+  // Start: June 22, 2026
+  // End: July 12, 2026
   for (let i = 0; i < 21; i++) {
-    const d = new Date(2026, 5, 13); // 5 = June
+    const d = new Date(2026, 5, 22); // 5 = June 22
     d.setDate(d.getDate() + i);
     const year = d.getFullYear();
     const month = d.getMonth() + 1;

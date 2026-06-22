@@ -13,10 +13,10 @@ let activePlannerSubView = 'grid'; // default view sub-tab ('grid' or 'list')
 export function renderPlanner(container, state) {
   // If no day expanded yet, default to the active/current challenge day
   if (!state.expandedDayDate && state.days.length > 0) {
-    const startDate = new Date(2026, 5, 13);
+    const startDate = new Date(2026, 5, 22);
     const today = new Date();
     const diffDays = Math.floor((today - startDate) / (24 * 60 * 60 * 1000)) + 1;
-    const activeIndex = (diffDays >= 1 && diffDays <= 30) ? diffDays : 4;
+    const activeIndex = (diffDays >= 1 && diffDays <= 21) ? diffDays : 1;
     const day = state.days.find(d => d.dayIndex === activeIndex);
     if (day) state.expandedDayDate = day.date;
   }
