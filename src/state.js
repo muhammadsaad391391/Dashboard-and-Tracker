@@ -165,13 +165,16 @@ class AppState {
     if (this.initialized) return;
     
     try {
+      if (window.setAetherLoaderText) window.setAetherLoaderText('Seeding database schema...');
       // Seed DB if it's the first run
       await seedDatabase();
 
+      if (window.setAetherLoaderText) window.setAetherLoaderText('Checking database migrations...');
       // Perform database migration to update non-negotiables to user's 10 daily essentials
       const nnVersionSetting = await db.settings.get('non_negotiables_version');
       const nnVersion = nnVersionSetting ? nnVersionSetting.value : 0;
       if (nnVersion < 2) {
+        if (window.setAetherLoaderText) window.setAetherLoaderText('Migrating non-negotiables...');
         await db.nonNegotiables.clear();
         const userEssentials = [
           { id: 'nn-seo', name: 'SEO', order: 0 },
@@ -189,24 +192,31 @@ class AppState {
         await db.settings.put({ key: 'non_negotiables_version', value: 2 });
       }
       
+      if (window.setAetherLoaderText) window.setAetherLoaderText('Loading active theme...');
       // Load theme from settings
       const themeSetting = await db.settings.get('theme');
       this.theme = themeSetting ? themeSetting.value : 'light';
       document.documentElement.className = this.theme;
 
+      if (window.setAetherLoaderText) window.setAetherLoaderText('Loading current view...');
       // Load active view
       const viewSetting = await db.settings.get('current_view');
       this.currentView = viewSetting ? viewSetting.value : 'dashboard';
 
+      if (window.setAetherLoaderText) window.setAetherLoaderText('Loading date & week...');
       // Load active date setting
       const activeDateSetting = await db.settings.get('active_date');
       this.activeDate = activeDateSetting ? activeDateSetting.value : this.getTodayDateStr();
+      
+      if (window.setAetherLoaderText) window.setAetherLoaderText('Ensuring rolling calendar week exists...');
       await this.ensureActiveWeekExists(this.activeDate);
 
+      if (window.setAetherLoaderText) window.setAetherLoaderText('Loading custom categories...');
       // Load custom sections setting
       const sectionsSetting = await db.settings.get('custom_sections');
       this.customSections = sectionsSetting ? sectionsSetting.value : [];
 
+      if (window.setAetherLoaderText) window.setAetherLoaderText('Loading cloud synchronization...');
       // Load cloud sync & AI settings
       const syncCodeSetting = await db.settings.get('sync_code');
       this.syncCode = syncCodeSetting ? syncCodeSetting.value : '';
@@ -214,6 +224,7 @@ class AppState {
       const syncEnabledSetting = await db.settings.get('sync_enabled');
       this.syncEnabled = syncEnabledSetting ? !!syncEnabledSetting.value : false;
 
+      if (window.setAetherLoaderText) window.setAetherLoaderText('Loading artificial intelligence...');
       const geminiKeySetting = await db.settings.get('gemini_api_key');
       this.geminiApiKey = geminiKeySetting ? geminiKeySetting.value : '';
 
@@ -224,7 +235,10 @@ class AppState {
       const view = this.currentView;
       this.sidebarCollapsed = (view === 'planner' || view === 'study' || view === 'etsy-seo' || view === 'finance' || view === 'calendar' || view.startsWith('sec-'));
 
+      if (window.setAetherLoaderText) window.setAetherLoaderText('Fetching collections from IndexedDB...');
       await this.fetchData();
+      
+      if (window.setAetherLoaderText) window.setAetherLoaderText('Initializing workspace...');
       this.initialized = true;
       this.notify();
     } catch (err) {

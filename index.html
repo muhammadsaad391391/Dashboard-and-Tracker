@@ -23,6 +23,10 @@
       div.innerText = msg + '\n\n' + (stack || 'N/A');
       document.body.appendChild(div);
     }
+    window.setAetherLoaderText = function(text) {
+      var el = document.querySelector('.loader-text');
+      if (el) el.innerText = text;
+    };
     window.addEventListener('error', function(e) {
       showErrorOverlay('Uncaught Error: ' + e.message + ' at ' + e.filename + ':' + e.lineno, e.error ? e.error.stack : '');
     });
