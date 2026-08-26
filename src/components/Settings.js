@@ -160,24 +160,7 @@ export function renderSettings(container, state) {
       </div>
     </div>
 
-    <!-- Gemini AI Core Settings Card -->
-    <div class="card" style="margin-bottom: 24px;">
-      <div class="card-title">Gemini AI Settings</div>
-      <p style="font-size: 13px; color: var(--text-secondary); margin-bottom: 16px;">
-        Input your Gemini API Key to enable the Interactive Aether AI Day Planner in your Project Hub.
-      </p>
-      
-      <div style="display:flex; flex-direction:column; gap:12px; background-color:var(--bg-tertiary); padding:16px; border:1px solid var(--border-color); border-radius:var(--radius-sm);">
-        <div style="display:flex; flex-direction:column; gap:6px;">
-          <span style="font-size:12px; font-weight:700;">Gemini API Key</span>
-          <div style="display:flex; gap:8px;">
-            <input type="password" id="gemini-key-input" class="premium-input" value="${state.geminiApiKey}" placeholder="AIzaSy..." style="flex:1; height:32px; font-family:var(--font-mono); font-size:11px; padding:4px 8px;">
-            <button class="btn btn-primary btn-sm" id="save-gemini-key-btn" style="height:32px; font-size:11px; padding:0 12px;">Save Key</button>
-          </div>
-          <span style="font-size:10px; color:var(--text-muted);">Stored locally in IndexedDB; connects directly to Google APIs securely.</span>
-        </div>
-      </div>
-    </div>
+
 
     <!-- System Control Danger Zone -->
     <div class="card" style="border-color: var(--danger-border); background-color: rgba(239, 68, 68, 0.02)">
@@ -445,15 +428,5 @@ export function renderSettings(container, state) {
     });
   }
 
-  // --- Gemini API Key Listeners ---
-  const geminiKeyInput = container.querySelector('#gemini-key-input');
-  const saveGeminiKeyBtn = container.querySelector('#save-gemini-key-btn');
 
-  if (saveGeminiKeyBtn && geminiKeyInput) {
-    saveGeminiKeyBtn.addEventListener('click', async () => {
-      const key = geminiKeyInput.value.trim();
-      await state.saveGeminiApiKey(key);
-      alert("Gemini API Key saved locally successfully!");
-    });
-  }
 }

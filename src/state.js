@@ -22,7 +22,7 @@ class AppState {
     this.projects = [];
     this.syncCode = '';
     this.syncEnabled = false;
-    this.geminiApiKey = '';
+    this.geminiApiKey = import.meta.env.VITE_GEMINI_API_KEY || '';
     this.availableTimeToday = '2h';
     this.chatHistory = [];
   }
@@ -229,7 +229,7 @@ class AppState {
 
       if (window.setAetherLoaderText) window.setAetherLoaderText('Loading artificial intelligence...');
       const geminiKeySetting = await db.settings.get('gemini_api_key');
-      this.geminiApiKey = geminiKeySetting ? geminiKeySetting.value : '';
+      this.geminiApiKey = geminiKeySetting ? geminiKeySetting.value : (import.meta.env.VITE_GEMINI_API_KEY || '');
 
       const availTimeSetting = await db.settings.get('available_time_today');
       this.availableTimeToday = availTimeSetting ? availTimeSetting.value : '2h';

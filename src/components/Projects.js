@@ -143,22 +143,7 @@ export function renderProjects(container, state) {
   container.innerHTML = `
     <div style="display:flex; flex-direction:column; gap:24px;">
       
-      <!-- Collapsible Setup Warning if Gemini Key is missing -->
-      ${!state.geminiApiKey ? `
-        <div class="card" style="border-left: 4px solid var(--accent); background-color: rgba(99, 102, 241, 0.05); padding:16px;">
-          <div style="display:flex; justify-content:space-between; align-items:center;">
-            <div>
-              <span style="font-weight:700; color:var(--text-primary);">🧠 Enable Aether AI Day Planner Chat</span>
-              <p style="font-size:12px; color:var(--text-secondary); margin-top:4px;">You haven't added a Gemini API Key yet. Go to Settings or enter your key below to unlock interactive AI scheduling.</p>
-            </div>
-            <button class="btn btn-primary btn-sm" id="quick-save-gemini-btn" style="white-space:nowrap; padding: 6px 12px;">Add API Key</button>
-          </div>
-          <div id="quick-gemini-input-wrapper" style="display:none; margin-top:12px; gap:8px;">
-            <input type="password" id="quick-gemini-key" class="premium-input" placeholder="AIzaSy..." style="flex:1; height:32px; font-size:11px; font-family:var(--font-mono); padding:4px 8px;">
-            <button class="btn btn-primary btn-sm" id="quick-save-key-action" style="height:32px;">Save</button>
-          </div>
-        </div>
-      ` : ''}
+
 
       <div style="display:grid; grid-template-columns: 2fr 1fr; gap:24px; align-items: start;" class="projects-grid">
         
@@ -456,27 +441,7 @@ export function renderProjects(container, state) {
 }
 
 function bindProjectsEvents(container, state, processedProjects) {
-  // A. Quick Gemini API Save
-  const quickSaveBtn = container.querySelector('#quick-save-gemini-btn');
-  const quickWrapper = container.querySelector('#quick-gemini-input-wrapper');
-  const quickSaveAction = container.querySelector('#quick-save-key-action');
-  
-  if (quickSaveBtn) {
-    quickSaveBtn.addEventListener('click', () => {
-      quickWrapper.style.display = quickWrapper.style.display === 'none' ? 'flex' : 'none';
-    });
-  }
-  
-  if (quickSaveAction) {
-    quickSaveAction.addEventListener('click', async () => {
-      const keyVal = container.querySelector('#quick-gemini-key').value.trim();
-      if (keyVal) {
-        await state.saveGeminiApiKey(keyVal);
-        alert("Gemini API Key saved successfully!");
-        renderProjects(container, state);
-      }
-    });
-  }
+
 
   // B. Available Time select dropdown
   const timeSelect = container.querySelector('#available-time-select');
