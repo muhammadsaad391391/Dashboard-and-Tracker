@@ -9,6 +9,13 @@ db.version(1).stores({
   settings: 'key'
 });
 
+db.version(2).stores({
+  days: 'date, dayIndex',
+  nonNegotiables: 'id, name',
+  settings: 'key',
+  projects: '++id, name, deadline, status, priority, type'
+});
+
 // Helper to format Date safe from timezone offsets
 export function getFormattedDate(year, month, day) {
   const m = String(month).padStart(2, '0');

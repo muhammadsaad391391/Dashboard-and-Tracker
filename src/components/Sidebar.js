@@ -24,6 +24,7 @@ export function renderSidebar(container, state) {
   const navItems = [
     { view: 'dashboard', label: 'Dashboard', icon: icons.dashboard },
     { view: 'planner', label: 'Daily Planner', icon: icons.planner },
+    { view: 'projects', label: 'Project Hub', icon: icons.projects },
     { view: 'study', label: 'Study Planner', icon: icons.study },
     { view: 'etsy-seo', label: 'Etsy + SEO', icon: icons.etsy }
   ];

@@ -11,6 +11,7 @@ import { renderSettings } from './components/Settings.js';
 import { renderStudy } from './components/Study.js';
 import { renderEtsySeo } from './components/EtsySeo.js';
 import { renderCategoryTracker } from './components/CategoryTracker.js';
+import { renderProjects } from './components/Projects.js';
 import { icons } from './icons.js';
 
 // Elements
@@ -55,6 +56,9 @@ function renderApp(appState) {
       break;
     case 'settings':
       renderSettings(viewContainer, appState);
+      break;
+    case 'projects':
+      renderProjects(viewContainer, appState);
       break;
     case 'study':
       renderStudy(viewContainer, appState);

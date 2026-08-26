@@ -19,6 +19,12 @@ class AppState {
     this.selectedCells = [];
     this.selectionAnchor = null;
     this.customSections = [];
+    this.projects = [];
+    this.syncCode = '';
+    this.syncEnabled = false;
+    this.geminiApiKey = '';
+    this.availableTimeToday = '2h';
+    this.chatHistory = [];
   }
 
   getTodayDateStr() {
@@ -200,6 +206,19 @@ class AppState {
     const sectionsSetting = await db.settings.get('custom_sections');
     this.customSections = sectionsSetting ? sectionsSetting.value : [];
 
+    // Load cloud sync & AI settings
+    const syncCodeSetting = await db.settings.get('sync_code');
+    this.syncCode = syncCodeSetting ? syncCodeSetting.value : '';
+
+    const syncEnabledSetting = await db.settings.get('sync_enabled');
+    this.syncEnabled = syncEnabledSetting ? !!syncEnabledSetting.value : false;
+
+    const geminiKeySetting = await db.settings.get('gemini_api_key');
+    this.geminiApiKey = geminiKeySetting ? geminiKeySetting.value : '';
+
+    const availTimeSetting = await db.settings.get('available_time_today');
+    this.availableTimeToday = availTimeSetting ? availTimeSetting.value : '2h';
+
     // Set initial sidebar collapse status for wide views
     const view = this.currentView;
     this.sidebarCollapsed = (view === 'planner' || view === 'study' || view === 'etsy-seo' || view === 'finance' || view === 'calendar' || view.startsWith('sec-'));
@@ -217,6 +236,12 @@ class AppState {
 
     this.nonNegotiables = await db.nonNegotiables.toArray();
     this.nonNegotiables.sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
+
+    if (db.projects) {
+      this.projects = await db.projects.toArray();
+    } else {
+      this.projects = [];
+    }
 
     const intervalsSetting = await db.settings.get('time_intervals');
     this.timeIntervals = intervalsSetting ? intervalsSetting.value : [
@@ -359,6 +384,7 @@ class AppState {
       // Save to IndexedDB
       await db.days.put(JSON.parse(JSON.stringify(this.days[dayIndex])));
     }
+    if (this.syncEnabled) await this.pushToCloud();
     this.notify();
   }
 
@@ -379,6 +405,7 @@ class AppState {
       return JSON.parse(JSON.stringify(day));
     });
     await db.days.bulkPut(daysToPut);
+    if (this.syncEnabled) await this.pushToCloud();
     this.notify();
   }
 
@@ -388,6 +415,7 @@ class AppState {
     const newNN = { id, name, order: this.nonNegotiables.length };
     await db.nonNegotiables.add(newNN);
     await this.fetchData();
+    if (this.syncEnabled) await this.pushToCloud();
     this.notify();
     return id;
   }
@@ -396,6 +424,7 @@ class AppState {
   async updateNonNegotiable(id, name) {
     await db.nonNegotiables.update(id, { name });
     await this.fetchData();
+    if (this.syncEnabled) await this.pushToCloud();
     this.notify();
   }
 
@@ -412,6 +441,7 @@ class AppState {
     }
     
     await this.fetchData();
+    if (this.syncEnabled) await this.pushToCloud();
     this.notify();
   }
 
@@ -421,6 +451,7 @@ class AppState {
       await db.nonNegotiables.update(orderedIds[i], { order: i });
     }
     await this.fetchData();
+    if (this.syncEnabled) await this.pushToCloud();
     this.notify();
   }
 
@@ -479,6 +510,7 @@ class AppState {
     this.customSections.push(newSec);
     
     await db.settings.put({ key: 'custom_sections', value: this.customSections });
+    if (this.syncEnabled) await this.pushToCloud();
     this.notify();
     return id;
   }
@@ -503,12 +535,164 @@ class AppState {
     this.customSections.splice(sectionIndex, 1);
     await db.settings.put({ key: 'custom_sections', value: this.customSections });
     
+    if (this.syncEnabled) await this.pushToCloud();
+    
     // If the user was viewing this custom section, fall back to dashboard
     if (this.currentView === id) {
       await this.setView('dashboard');
     } else {
       this.notify();
     }
+  }
+
+  // Save Gemini API Key
+  async saveGeminiApiKey(key) {
+    this.geminiApiKey = key;
+    await db.settings.put({ key: 'gemini_api_key', value: key });
+    this.notify();
+  }
+
+  // Save available time today
+  async saveAvailableTimeToday(val) {
+    this.availableTimeToday = val;
+    await db.settings.put({ key: 'available_time_today', value: val });
+    this.notify();
+  }
+
+  // Save Sync Code
+  async saveSyncCode(code) {
+    this.syncCode = code;
+    await db.settings.put({ key: 'sync_code', value: code });
+    this.notify();
+  }
+
+  // Toggle Cloud Sync
+  async toggleSync(enabled) {
+    this.syncEnabled = enabled;
+    await db.settings.put({ key: 'sync_enabled', value: enabled });
+    if (enabled && this.syncCode) {
+      await this.pushToCloud();
+    }
+    this.notify();
+  }
+
+  // Cloud Sync: Push local database payload to kvdb.io
+  async pushToCloud() {
+    if (!this.syncCode) return;
+    try {
+      const payload = {
+        days: this.days,
+        nonNegotiables: this.nonNegotiables,
+        projects: this.projects,
+        customSections: this.customSections,
+        timestamp: Date.now()
+      };
+      const response = await fetch(`https://kvdb.io/4y935uJ8z72A1bCDeFgHiJ/${this.syncCode}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+      if (!response.ok) throw new Error("Sync upload failed");
+      console.log("Cloud sync pushed successfully.");
+    } catch (err) {
+      console.error("Cloud push failed:", err);
+    }
+  }
+
+  // Cloud Sync: Pull database payload from kvdb.io and overwrite IndexedDB
+  async pullFromCloud(code) {
+    const targetCode = code || this.syncCode;
+    if (!targetCode) return false;
+    try {
+      const response = await fetch(`https://kvdb.io/4y935uJ8z72A1bCDeFgHiJ/${targetCode}`);
+      if (!response.ok) {
+        if (response.status === 404) {
+          // If code doesn't exist yet, we push our current local state as the starting point!
+          if (code) {
+            this.syncCode = code;
+            await db.settings.put({ key: 'sync_code', value: code });
+            await this.pushToCloud();
+            return true;
+          }
+          return false;
+        }
+        throw new Error("Sync download failed");
+      }
+      const data = await response.json();
+      if (data && data.days) {
+        // Overwrite local databases
+        await db.transaction('rw', db.days, db.nonNegotiables, db.projects, async () => {
+          await db.days.clear();
+          await db.nonNegotiables.clear();
+          if (db.projects) await db.projects.clear();
+
+          await db.days.bulkAdd(data.days);
+          await db.nonNegotiables.bulkAdd(data.nonNegotiables);
+          if (data.projects && db.projects) {
+            await db.projects.bulkAdd(data.projects);
+          }
+        });
+        
+        if (data.customSections) {
+          this.customSections = data.customSections;
+          await db.settings.put({ key: 'custom_sections', value: this.customSections });
+        }
+
+        if (code) {
+          this.syncCode = code;
+          await db.settings.put({ key: 'sync_code', value: code });
+        }
+
+        await this.fetchData();
+        this.notify();
+        return true;
+      }
+    } catch (err) {
+      console.error("Cloud pull failed:", err);
+      throw err;
+    }
+    return false;
+  }
+
+  // Project Hub Actions
+  async addProject(project) {
+    if (!db.projects) return;
+    const cleanProj = {
+      name: project.name || 'Untitled Project',
+      goal: project.goal || '',
+      deadline: project.deadline || '',
+      status: project.status || 'Not started',
+      priority: project.priority || 'medium',
+      type: project.type || 'flexible',
+      estimatedHours: Number(project.estimatedHours) || 0,
+      availableHoursPerDay: Number(project.availableHoursPerDay) || 0,
+      nextGoal: project.nextGoal || '',
+      lastWorkedOn: project.lastWorkedOn || Date.now(),
+      subtasks: project.subtasks || []
+    };
+    const id = await db.projects.add(cleanProj);
+    await this.fetchData();
+    if (this.syncEnabled) await this.pushToCloud();
+    this.notify();
+    return id;
+  }
+
+  async updateProject(id, updates) {
+    if (!db.projects) return;
+    const projId = Number(id);
+    await db.projects.update(projId, updates);
+    await this.fetchData();
+    if (this.syncEnabled) await this.pushToCloud();
+    this.notify();
+  }
+
+  async deleteProject(id) {
+    if (!db.projects) return;
+    const projId = Number(id);
+    await db.projects.delete(projId);
+    await this.fetchData();
+    if (this.syncEnabled) await this.pushToCloud();
+    this.notify();
   }
 }
 

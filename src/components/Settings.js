@@ -119,6 +119,66 @@ export function renderSettings(container, state) {
       </div>
     </div>
 
+    <!-- Cloud Synchronization Card -->
+    <div class="card" style="margin-bottom: 24px;">
+      <div class="card-title">Cloud Synchronization (Access Anywhere)</div>
+      <p style="font-size: 13px; color: var(--text-secondary); margin-bottom: 16px;">
+        Replicate your Aether database across your phone, tablet, and laptop. All updates sync instantly in the background without needing a user account.
+      </p>
+      
+      <div style="display:flex; flex-direction:column; gap:16px;">
+        <div style="display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:12px; background-color:var(--bg-tertiary); padding:16px; border:1px solid var(--border-color); border-radius:var(--radius-sm);">
+          <div style="display:flex; flex-direction:column; gap:4px; flex:1; min-width:200px;">
+            <span style="font-size:14px; font-weight:700;">Sync Code</span>
+            <span style="font-size:11px; color:var(--text-secondary);">Enter this code on other devices to fetch or push database states.</span>
+          </div>
+          <div style="display:flex; align-items:center; gap:8px;">
+            <input type="text" id="sync-code-input" class="premium-input" value="${state.syncCode}" placeholder="Enter sync code..." style="width:160px; height:32px; font-family:var(--font-mono); font-size:11px; padding:4px 8px;">
+            <button class="btn btn-secondary btn-sm" id="generate-sync-code-btn" style="height:32px; font-size:11px; padding:0 8px;">Generate New</button>
+          </div>
+        </div>
+
+        <div style="display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:12px; background-color:var(--bg-tertiary); padding:16px; border:1px solid var(--border-color); border-radius:var(--radius-sm);">
+          <div style="display:flex; flex-direction:column; gap:4px; flex:1; min-width:200px;">
+            <span style="font-size:14px; font-weight:700;">Auto-Sync Background</span>
+            <span style="font-size:11px; color:var(--text-secondary);">Automatically upload backups on every planner edit and load remote changes at launch.</span>
+          </div>
+          <div style="display:flex; align-items:center; gap:8px;">
+            <input type="checkbox" id="sync-toggle-check" ${state.syncEnabled ? 'checked' : ''} style="width:20px; height:20px; cursor:pointer;">
+            <span style="font-size:12px; font-weight:600;">Enable Auto-Sync</span>
+          </div>
+        </div>
+
+        <div style="display:flex; gap:12px;">
+          <button class="btn btn-primary" id="push-cloud-btn" style="flex:1; justify-content:center; gap:8px;">
+            ${icons.sync} Push to Cloud
+          </button>
+          <button class="btn btn-secondary" id="pull-cloud-btn" style="flex:1; justify-content:center; gap:8px;">
+            ${icons.import} Pull from Cloud
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Gemini AI Core Settings Card -->
+    <div class="card" style="margin-bottom: 24px;">
+      <div class="card-title">Gemini AI Settings</div>
+      <p style="font-size: 13px; color: var(--text-secondary); margin-bottom: 16px;">
+        Input your Gemini API Key to enable the Interactive Aether AI Day Planner in your Project Hub.
+      </p>
+      
+      <div style="display:flex; flex-direction:column; gap:12px; background-color:var(--bg-tertiary); padding:16px; border:1px solid var(--border-color); border-radius:var(--radius-sm);">
+        <div style="display:flex; flex-direction:column; gap:6px;">
+          <span style="font-size:12px; font-weight:700;">Gemini API Key</span>
+          <div style="display:flex; gap:8px;">
+            <input type="password" id="gemini-key-input" class="premium-input" value="${state.geminiApiKey}" placeholder="AIzaSy..." style="flex:1; height:32px; font-family:var(--font-mono); font-size:11px; padding:4px 8px;">
+            <button class="btn btn-primary btn-sm" id="save-gemini-key-btn" style="height:32px; font-size:11px; padding:0 12px;">Save Key</button>
+          </div>
+          <span style="font-size:10px; color:var(--text-muted);">Stored locally in IndexedDB; connects directly to Google APIs securely.</span>
+        </div>
+      </div>
+    </div>
+
     <!-- System Control Danger Zone -->
     <div class="card" style="border-color: var(--danger-border); background-color: rgba(239, 68, 68, 0.02)">
       <div class="card-title" style="color:var(--danger)">Danger Zone</div>
@@ -300,4 +360,100 @@ export function renderSettings(container, state) {
       }
     });
   });
+
+  // --- Cloud Sync Event Listeners ---
+  const syncCodeInput = container.querySelector('#sync-code-input');
+  const genSyncCodeBtn = container.querySelector('#generate-sync-code-btn');
+  const syncToggleCheck = container.querySelector('#sync-toggle-check');
+  const pushCloudBtn = container.querySelector('#push-cloud-btn');
+  const pullCloudBtn = container.querySelector('#pull-cloud-btn');
+
+  if (genSyncCodeBtn && syncCodeInput) {
+    genSyncCodeBtn.addEventListener('click', async () => {
+      const randCode = 'aether-usr-' + Math.random().toString(36).substring(2, 12).toLowerCase();
+      syncCodeInput.value = randCode;
+      await state.saveSyncCode(randCode);
+      alert(`New Sync Code Generated: ${randCode}. Keep this secret!`);
+    });
+  }
+
+  if (syncCodeInput) {
+    syncCodeInput.addEventListener('change', async () => {
+      const code = syncCodeInput.value.trim();
+      await state.saveSyncCode(code);
+    });
+  }
+
+  if (syncToggleCheck) {
+    syncToggleCheck.addEventListener('change', async () => {
+      await state.toggleSync(syncToggleCheck.checked);
+      if (syncToggleCheck.checked) {
+        alert("Auto-Sync is now ENABLED! Your updates will auto-save to cloud.");
+      } else {
+        alert("Auto-Sync is now DISABLED.");
+      }
+    });
+  }
+
+  if (pushCloudBtn) {
+    pushCloudBtn.addEventListener('click', async () => {
+      if (!state.syncCode) {
+        alert("Please set or generate a Sync Code first!");
+        return;
+      }
+      pushCloudBtn.disabled = true;
+      pushCloudBtn.innerText = "Syncing...";
+      try {
+        await state.pushToCloud();
+        confetti({ particleCount: 30, spread: 25 });
+        alert("Successfully pushed local state to Cloud!");
+      } catch (err) {
+        alert("Cloud Push failed: " + err.message);
+      } finally {
+        pushCloudBtn.disabled = false;
+        pushCloudBtn.innerHTML = `${icons.sync} Push to Cloud`;
+      }
+    });
+  }
+
+  if (pullCloudBtn) {
+    pullCloudBtn.addEventListener('click', async () => {
+      const code = syncCodeInput ? syncCodeInput.value.trim() : '';
+      if (!code) {
+        alert("Please enter a Sync Code to pull from!");
+        return;
+      }
+      if (confirm("⚠️ WARNING: Pulling from Cloud will completely replace your current local planner and finance logs. Are you sure you want to overwrite local data?")) {
+        pullCloudBtn.disabled = true;
+        pullCloudBtn.innerText = "Syncing...";
+        try {
+          const loaded = await state.pullFromCloud(code);
+          if (loaded) {
+            confetti({ particleCount: 60, spread: 45 });
+            alert("Cloud data successfully pulled and loaded!");
+            state.setView('dashboard');
+          } else {
+            alert("No cloud backup found for this Sync Code yet. Click 'Push to Cloud' first to initialize this code!");
+          }
+        } catch (err) {
+          alert("Cloud Pull failed: " + err.message);
+        } finally {
+          pullCloudBtn.disabled = false;
+          pullCloudBtn.innerHTML = `${icons.import} Pull from Cloud`;
+        }
+      }
+    });
+  }
+
+  // --- Gemini API Key Listeners ---
+  const geminiKeyInput = container.querySelector('#gemini-key-input');
+  const saveGeminiKeyBtn = container.querySelector('#save-gemini-key-btn');
+
+  if (saveGeminiKeyBtn && geminiKeyInput) {
+    saveGeminiKeyBtn.addEventListener('click', async () => {
+      const key = geminiKeyInput.value.trim();
+      await state.saveGeminiApiKey(key);
+      alert("Gemini API Key saved locally successfully!");
+    });
+  }
 }
