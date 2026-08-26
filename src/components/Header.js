@@ -1,3 +1,5 @@
+import { icons } from '../icons.js';
+
 export function renderHeader(container, state) {
   const activeDate = state.getActiveDate();
   const activeDay = state.days.find(d => d.date === activeDate);
