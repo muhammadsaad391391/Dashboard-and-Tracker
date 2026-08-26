@@ -188,13 +188,16 @@ export function renderDashboard(container, state) {
                     ${typeBadge}
                   </div>
                   
-                  <div class="task-actions-side">
+                  <div class="task-actions-side" style="display:flex; align-items:center; gap:8px;">
                     <select class="premium-select ${task.status}" data-task-id="${task.id}">
                       <option value="pending" ${task.status === 'pending' ? 'selected' : ''}>Pending</option>
                       <option value="completed" ${task.status === 'completed' ? 'selected' : ''}>✅ Completed</option>
                       <option value="missed" ${task.status === 'missed' ? 'selected' : ''}>❌ Missed</option>
                       <option value="delayed" ${task.status === 'delayed' ? 'selected' : ''}>⚠ Delayed</option>
                     </select>
+                    <button class="btn btn-danger btn-sm delete-dashboard-task-btn" data-task-id="${task.id}" style="padding:4px; height:28px; width:28px; display:flex; justify-content:center; align-items:center;" title="Delete Task">
+                      ${icons.trash}
+                    </button>
                   </div>
                 </div>
               `;
@@ -335,9 +338,17 @@ export function renderDashboard(container, state) {
     const originalHTML = row.innerHTML;
     
     row.innerHTML = `
-      <div class="task-info-side" style="display: flex; align-items: center; gap: 8px; flex: 1; margin-right: 8px;">
+      <div class="task-info-side" style="display: flex; align-items: center; gap: 8px; flex: 1; margin-right: 8px; flex-wrap: wrap;">
         <span class="task-time-lbl">${time}</span>
-        <input type="text" class="premium-input inline-dashboard-input" placeholder="Task name..." style="flex: 1; font-size: 13px; height: 28px; padding: 4px 8px; background-color: var(--bg-secondary); border: 1px solid var(--border-color); border-radius: var(--radius-sm); color: var(--text-primary); outline: none;" autofocus>
+        <input type="text" class="premium-input inline-dashboard-input" placeholder="Task name..." style="flex: 2; font-size: 13px; height: 28px; padding: 4px 8px; background-color: var(--bg-secondary); border: 1px solid var(--border-color); border-radius: var(--radius-sm); color: var(--text-primary); outline: none;" autofocus>
+        <select class="premium-select inline-dashboard-type-select" style="flex: 1; min-width: 100px; height: 28px; font-size: 12px; padding: 2px 4px;">
+          <option value="general">General</option>
+          <option value="study">Study</option>
+          <option value="etsy_seo">Etsy + SEO</option>
+          ${state.customSections.map(s => `
+            <option value="${s.type}">${s.label}</option>
+          `).join('')}
+        </select>
       </div>
       <div class="task-actions-side" style="display: flex; gap: 4px;">
         <button class="btn btn-secondary btn-sm cancel-dashboard-input" style="padding: 2px 6px; font-size: 11px; height: 28px;">Cancel</button>
@@ -346,6 +357,7 @@ export function renderDashboard(container, state) {
     `;
 
     const input = row.querySelector('.inline-dashboard-input');
+    const typeSelect = row.querySelector('.inline-dashboard-type-select');
     const cancelBtn = row.querySelector('.cancel-dashboard-input');
     const saveBtn = row.querySelector('.save-dashboard-input');
     
@@ -353,6 +365,7 @@ export function renderDashboard(container, state) {
 
     const handleSave = async () => {
       const value = input.value.trim();
+      const type = typeSelect.value;
       if (value) {
         const newTask = {
           id: 't-' + Date.now(),
@@ -361,7 +374,7 @@ export function renderDashboard(container, state) {
           status: 'pending',
           missedReason: '',
           actualTime: '',
-          type: 'general'
+          type: type
         };
         activeDay.schedule.push(newTask);
         activeDay.schedule.sort((a, b) => {
@@ -405,6 +418,34 @@ export function renderDashboard(container, state) {
 
   container.querySelectorAll('.quick-add-task-btn').forEach(btn => {
     btn.addEventListener('click', onQuickAddClick);
+  });
+
+  // Edit Task Details click handler
+  container.querySelectorAll('.task-name-lbl').forEach(label => {
+    label.addEventListener('click', (e) => {
+      const row = label.closest('.task-row');
+      const taskId = row.getAttribute('data-task-id');
+      const task = activeDay.schedule.find(t => t.id === taskId);
+      if (task) {
+        enterDashboardTaskEditMode(row, task, activeDay, state, container);
+      }
+    });
+    // Add custom cursor/pointer look
+    label.style.cursor = 'pointer';
+    label.title = 'Click to edit task name or category';
+  });
+
+  // Delete Task Handler
+  container.querySelectorAll('.delete-dashboard-task-btn').forEach(btn => {
+    btn.addEventListener('click', async (e) => {
+      e.stopPropagation();
+      const taskId = btn.getAttribute('data-task-id');
+      if (confirm('Delete this task from schedule?')) {
+        activeDay.schedule = activeDay.schedule.filter(t => t.id !== taskId);
+        await state.updateDay(activeDay.date, { schedule: activeDay.schedule });
+        renderDashboard(container, state);
+      }
+    });
   });
 
   // Task Status Select Change
@@ -539,4 +580,76 @@ export function renderDashboard(container, state) {
       if (e.key === 'Enter') handleSave();
     });
   }
+}
+
+function enterDashboardTaskEditMode(row, task, activeDay, state, container) {
+  const originalHTML = row.innerHTML;
+  
+  // Custom sections map
+  const allTypes = [
+    { type: 'general', label: 'General' },
+    { type: 'study', label: 'Study' },
+    { type: 'etsy_seo', label: 'Etsy + SEO' },
+    ...state.customSections.map(s => ({ type: s.type, label: s.label }))
+  ];
+  
+  row.innerHTML = `
+    <div class="task-info-side" style="display: flex; align-items: center; gap: 8px; flex: 1; margin-right: 8px; flex-wrap: wrap;">
+      <span class="task-time-lbl">${task.plannedTime}</span>
+      <input type="text" class="premium-input edit-dashboard-input" value="${task.name}" style="flex: 2; font-size: 13px; height: 28px; padding: 4px 8px; background-color: var(--bg-secondary); border: 1px solid var(--border-color); border-radius: var(--radius-sm); color: var(--text-primary); outline: none;" autofocus>
+      
+      <select class="premium-select edit-dashboard-type-select" style="flex: 1; min-width: 100px; height: 28px; font-size: 12px; padding: 2px 4px;">
+        ${allTypes.map(t => `
+          <option value="${t.type}" ${task.type === t.type ? 'selected' : ''}>${t.label}</option>
+        `).join('')}
+      </select>
+    </div>
+    <div class="task-actions-side" style="display: flex; gap: 4px;">
+      <button class="btn btn-secondary btn-sm cancel-dashboard-edit" style="padding: 2px 6px; font-size: 11px; height: 28px;">Cancel</button>
+      <button class="btn btn-primary btn-sm save-dashboard-edit" style="padding: 2px 6px; font-size: 11px; height: 28px;">Save</button>
+    </div>
+  `;
+
+  const input = row.querySelector('.edit-dashboard-input');
+  const typeSelect = row.querySelector('.edit-dashboard-type-select');
+  const cancelBtn = row.querySelector('.cancel-dashboard-edit');
+  const saveBtn = row.querySelector('.save-dashboard-edit');
+
+  // Place cursor at end of text input
+  input.focus();
+  const val = input.value;
+  input.value = '';
+  input.value = val;
+
+  const saveEdit = async () => {
+    const newName = input.value.trim();
+    const newType = typeSelect.value;
+    if (newName) {
+      task.name = newName;
+      task.type = newType;
+      await state.updateDay(activeDay.date, { schedule: activeDay.schedule });
+      renderDashboard(container, state);
+    } else {
+      renderDashboard(container, state);
+    }
+  };
+
+  cancelBtn.addEventListener('click', (e) => {
+    e.stopPropagation();
+    renderDashboard(container, state);
+  });
+  saveBtn.addEventListener('click', (e) => {
+    e.stopPropagation();
+    saveEdit();
+  });
+  input.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') {
+      e.stopPropagation();
+      saveEdit();
+    }
+    if (e.key === 'Escape') {
+      e.stopPropagation();
+      renderDashboard(container, state);
+    }
+  });
 }
