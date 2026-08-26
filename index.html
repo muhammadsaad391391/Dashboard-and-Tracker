@@ -4,6 +4,24 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>AETHER — Peak Performance & Life Tracker</title>
+  <script>
+    window.addEventListener('error', function(e) {
+      var div = document.createElement('div');
+      div.style.position = 'fixed';
+      div.style.top = '0';
+      div.style.left = '0';
+      div.style.width = '100%';
+      div.style.background = '#ef4444';
+      div.style.color = '#ffffff';
+      div.style.padding = '20px';
+      div.style.zIndex = '99999';
+      div.style.fontFamily = 'monospace';
+      div.style.fontSize = '12px';
+      div.style.whiteSpace = 'pre-wrap';
+      div.innerText = 'Uncaught Error: ' + e.message + '\nSource: ' + e.filename + ':' + e.lineno + '\nStack: ' + (e.error ? e.error.stack : 'N/A');
+      document.body.appendChild(div);
+    });
+  </script>
   <meta name="description" content="A premium, world-class personal productivity and life-tracking web application. Local-first, private, and beautifully styled.">
   <!-- Google Fonts -->
   <link rel="preconnect" href="https://fonts.googleapis.com">
