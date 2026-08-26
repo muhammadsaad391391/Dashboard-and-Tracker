@@ -5,8 +5,10 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>AETHER — Peak Performance & Life Tracker</title>
   <script>
-    window.addEventListener('error', function(e) {
+    function showErrorOverlay(msg, stack) {
+      if (document.getElementById('error-overlay')) return;
       var div = document.createElement('div');
+      div.id = 'error-overlay';
       div.style.position = 'fixed';
       div.style.top = '0';
       div.style.left = '0';
@@ -18,8 +20,15 @@
       div.style.fontFamily = 'monospace';
       div.style.fontSize = '12px';
       div.style.whiteSpace = 'pre-wrap';
-      div.innerText = 'Uncaught Error: ' + e.message + '\nSource: ' + e.filename + ':' + e.lineno + '\nStack: ' + (e.error ? e.error.stack : 'N/A');
+      div.innerText = msg + '\n\n' + (stack || 'N/A');
       document.body.appendChild(div);
+    }
+    window.addEventListener('error', function(e) {
+      showErrorOverlay('Uncaught Error: ' + e.message + ' at ' + e.filename + ':' + e.lineno, e.error ? e.error.stack : '');
+    });
+    window.addEventListener('unhandledrejection', function(e) {
+      var reason = e.reason || {};
+      showErrorOverlay('Unhandled Promise Rejection: ' + (reason.message || reason), reason.stack || '');
     });
   </script>
   <meta name="description" content="A premium, world-class personal productivity and life-tracking web application. Local-first, private, and beautifully styled.">
