@@ -207,6 +207,9 @@ class AppState {
       // Load active date setting
       const activeDateSetting = await db.settings.get('active_date');
       this.activeDate = activeDateSetting ? activeDateSetting.value : this.getTodayDateStr();
+
+      if (window.setAetherLoaderText) window.setAetherLoaderText('Fetching collections from IndexedDB...');
+      await this.fetchData();
       
       if (window.setAetherLoaderText) window.setAetherLoaderText('Ensuring rolling calendar week exists...');
       await this.ensureActiveWeekExists(this.activeDate);
@@ -235,8 +238,7 @@ class AppState {
       const view = this.currentView;
       this.sidebarCollapsed = (view === 'planner' || view === 'study' || view === 'etsy-seo' || view === 'finance' || view === 'calendar' || view.startsWith('sec-'));
 
-      if (window.setAetherLoaderText) window.setAetherLoaderText('Fetching collections from IndexedDB...');
-      await this.fetchData();
+      // Data collections fetched successfully earlier
       
       if (window.setAetherLoaderText) window.setAetherLoaderText('Initializing workspace...');
       this.initialized = true;

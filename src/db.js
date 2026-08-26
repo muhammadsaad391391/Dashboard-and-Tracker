@@ -3,13 +3,7 @@ import Dexie from 'dexie';
 export const db = new Dexie('AetherDB_Intervals');
 
 // Declare schemas
-db.version(1).stores({
-  days: 'date, dayIndex',
-  nonNegotiables: 'id, name',
-  settings: 'key'
-});
-
-db.version(2).stores({
+db.version(3).stores({
   days: 'date, dayIndex',
   nonNegotiables: 'id, name',
   settings: 'key',
