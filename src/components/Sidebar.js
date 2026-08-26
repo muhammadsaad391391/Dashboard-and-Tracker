@@ -25,21 +25,43 @@ export function renderSidebar(container, state) {
     { view: 'dashboard', label: 'Dashboard', icon: icons.dashboard },
     { view: 'planner', label: 'Daily Planner', icon: icons.planner },
     { view: 'study', label: 'Study Planner', icon: icons.study },
-    { view: 'etsy-seo', label: 'Etsy + SEO', icon: icons.etsy },
+    { view: 'etsy-seo', label: 'Etsy + SEO', icon: icons.etsy }
+  ];
+
+  // Inject custom sections dynamically
+  state.customSections.forEach(sec => {
+    let secIcon = icons.planner;
+    if (sec.icon === 'study') secIcon = icons.study;
+    else if (sec.icon === 'etsy') secIcon = icons.etsy;
+    else if (sec.icon === 'finance') secIcon = icons.finance;
+    
+    navItems.push({
+      view: sec.id,
+      label: sec.label,
+      icon: secIcon
+    });
+  });
+
+  navItems.push(
     { view: 'non-negotiables', label: 'Non-Negotiables', icon: icons.nonNegotiables },
     { view: 'finance', label: 'Money Hub', icon: icons.finance },
     { view: 'analytics', label: 'Analytics', icon: icons.analytics },
     { view: 'calendar', label: 'Calendar Grid', icon: icons.calendar },
     { view: 'settings', label: 'Settings', icon: icons.settings }
-  ];
+  );
 
   const themeIcon = state.theme === 'dark' ? icons.sun : icons.moon;
   const themeLabel = state.theme === 'dark' ? 'Light Mode' : 'Dark Mode';
 
   container.innerHTML = `
-    <div class="sidebar-logo">
-      <div class="sidebar-logo-icon">Æ</div>
-      <span>AETHER</span>
+    <div class="sidebar-logo" style="display:flex; justify-content:space-between; align-items:center; width:100%;">
+      <div style="display:flex; align-items:center; gap:12px;">
+        <div class="sidebar-logo-icon">Æ</div>
+        <span>AETHER</span>
+      </div>
+      <button id="sidebar-close-btn" style="background:none; border:none; color:var(--text-secondary); cursor:pointer; padding:4px; display:flex; align-items:center; justify-content:center; outline:none;" title="Collapse Sidebar">
+        <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m15 18-6-6 6-6"/></svg>
+      </button>
     </div>
     
     <nav class="sidebar-nav">
@@ -86,6 +108,13 @@ export function renderSidebar(container, state) {
       state.setView(view);
     });
   });
+
+  const closeBtn = container.querySelector('#sidebar-close-btn');
+  if (closeBtn) {
+    closeBtn.addEventListener('click', () => {
+      state.toggleSidebar();
+    });
+  }
 
   const themeSwitch = container.querySelector('#sidebar-theme-switch');
   if (themeSwitch) {

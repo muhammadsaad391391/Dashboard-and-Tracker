@@ -32,11 +32,15 @@ export function renderHeader(container, state) {
     'settings': 'System Settings'
   };
 
+  const showToggle = !!state.sidebarCollapsed;
+
   container.innerHTML = `
     <div class="header-title-area" style="display:flex; align-items:center; gap:16px;">
-      <button class="theme-toggle-btn" id="sidebar-collapse-toggle" style="width:36px; height:36px; padding:0; justify-content:center; display:flex; align-items:center;" title="Toggle Sidebar">
-        <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="18" height="18" x="3" y="3" rx="2"/><path d="M9 3v18"/></svg>
-      </button>
+      ${showToggle ? `
+        <button class="theme-toggle-btn" id="sidebar-collapse-toggle" style="width:36px; height:36px; padding:0; justify-content:center; display:flex; align-items:center;" title="Expand Sidebar">
+          <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="3" x2="21" y1="6" y2="6"/><line x1="3" x2="21" y1="12" y2="12"/><line x1="3" x2="21" y1="18" y2="18"/></svg>
+        </button>
+      ` : ''}
       <div style="display:flex; flex-direction:column;">
         <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
           <span class="header-subtitle" style="white-space: nowrap;">Focus Day:</span>

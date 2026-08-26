@@ -179,7 +179,11 @@ export function renderDashboard(container, state) {
               return `
                 <div class="task-row ${statusClass}" data-task-id="${task.id}" style="margin-bottom: 8px;">
                   <div class="task-info-side" style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap; flex: 1; min-width: 0;">
-                    <span class="task-time-lbl">${slot}</span>
+                    <select class="dashboard-time-slot-select" data-task-id="${task.id}" data-current-time="${slot}" style="font-family:var(--font-mono); font-size:10px; font-weight:700; padding: 2px 6px; border-radius: 4px; border: 1px solid var(--border-color); background-color: var(--bg-tertiary); color: var(--text-primary); outline: none; cursor: pointer; transition: border-color 0.2s;">
+                      ${state.timeIntervals.map(t => `
+                        <option value="${t}" ${t === slot ? 'selected' : ''}>${t}</option>
+                      `).join('')}
+                    </select>
                     <span class="task-name-lbl" title="${task.name}" style="overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 150px; font-weight: 600;">${task.name}</span>
                     ${typeBadge}
                   </div>
@@ -286,6 +290,41 @@ export function renderDashboard(container, state) {
       await state.setActiveDate(`${y}-${m}-${d}`);
     });
   }
+
+  // Reschedule Time Slot Change Handler
+  container.querySelectorAll('.dashboard-time-slot-select').forEach(select => {
+    select.addEventListener('change', async (e) => {
+      const taskId = select.getAttribute('data-task-id');
+      const oldSlot = select.getAttribute('data-current-time');
+      const newSlot = e.target.value;
+      
+      if (oldSlot === newSlot) return;
+      
+      // Check if there is already a task in the target slot
+      const existingTask = activeDay.schedule.find(t => t.plannedTime === newSlot);
+      if (existingTask) {
+        alert(`Reschedule Aborted: The slot "${newSlot}" is already occupied by the task "${existingTask.name}". Please clear or reschedule that task first.`);
+        select.value = oldSlot; // Revert select value
+        return;
+      }
+      
+      // Update task plannedTime
+      const taskIndex = activeDay.schedule.findIndex(t => t.id === taskId);
+      if (taskIndex !== -1) {
+        activeDay.schedule[taskIndex].plannedTime = newSlot;
+        
+        // Sort schedule chronologically based on state.timeIntervals order
+        activeDay.schedule.sort((a, b) => {
+          const indexA = state.timeIntervals.indexOf(a.plannedTime);
+          const indexB = state.timeIntervals.indexOf(b.plannedTime);
+          return indexA - indexB;
+        });
+        
+        await state.updateDay(activeDay.date, { schedule: activeDay.schedule });
+        showToast(`Rescheduled task to ${newSlot}`);
+      }
+    });
+  });
 
   // Quick Add Task Event Handler
   const onQuickAddClick = (e) => {

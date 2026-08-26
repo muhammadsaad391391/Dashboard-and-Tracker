@@ -18,6 +18,7 @@ class AppState {
     this.etsyScrollNeedsInit = true;
     this.selectedCells = [];
     this.selectionAnchor = null;
+    this.customSections = [];
   }
 
   getTodayDateStr() {
@@ -195,9 +196,13 @@ class AppState {
     this.activeDate = activeDateSetting ? activeDateSetting.value : this.getTodayDateStr();
     await this.ensureActiveWeekExists(this.activeDate);
 
+    // Load custom sections setting
+    const sectionsSetting = await db.settings.get('custom_sections');
+    this.customSections = sectionsSetting ? sectionsSetting.value : [];
+
     // Set initial sidebar collapse status for wide views
     const view = this.currentView;
-    this.sidebarCollapsed = (view === 'planner' || view === 'study' || view === 'etsy-seo' || view === 'finance' || view === 'calendar');
+    this.sidebarCollapsed = (view === 'planner' || view === 'study' || view === 'etsy-seo' || view === 'finance' || view === 'calendar' || view.startsWith('sec-'));
 
     await this.fetchData();
     this.initialized = true;
@@ -262,7 +267,7 @@ class AppState {
     this.selectionAnchor = null;
 
     // Auto-collapse sidebar on wide views to maximize screen space
-    if (view === 'planner' || view === 'study' || view === 'etsy-seo' || view === 'finance' || view === 'calendar') {
+    if (view === 'planner' || view === 'study' || view === 'etsy-seo' || view === 'finance' || view === 'calendar' || view.startsWith('sec-')) {
       this.sidebarCollapsed = true;
     } else {
       this.sidebarCollapsed = false;
@@ -430,6 +435,50 @@ class AppState {
       nonNegotiables: this.nonNegotiables
     };
     return JSON.stringify(data, null, 2);
+  }
+
+  // Add a new custom category planner section
+  async addCustomSection(label, iconType) {
+    const cleanLabel = label.trim();
+    if (!cleanLabel) return;
+    
+    const id = 'sec-' + Date.now();
+    const type = 'cust_' + Date.now().toString(36);
+    
+    const newSec = { id, label: cleanLabel, type, icon: iconType || 'planner' };
+    this.customSections.push(newSec);
+    
+    await db.settings.put({ key: 'custom_sections', value: this.customSections });
+    this.notify();
+    return id;
+  }
+
+  // Delete a custom category planner section
+  async deleteCustomSection(id) {
+    const sectionIndex = this.customSections.findIndex(s => s.id === id);
+    if (sectionIndex === -1) return;
+    
+    const section = this.customSections[sectionIndex];
+    
+    // Clean up tasks of this category from all days in database
+    for (const day of this.days) {
+      if (day.schedule) {
+        const cleanedSchedule = day.schedule.filter(t => t.type !== section.type);
+        if (cleanedSchedule.length !== day.schedule.length) {
+          await this.updateDay(day.date, { schedule: cleanedSchedule });
+        }
+      }
+    }
+    
+    this.customSections.splice(sectionIndex, 1);
+    await db.settings.put({ key: 'custom_sections', value: this.customSections });
+    
+    // If the user was viewing this custom section, fall back to dashboard
+    if (this.currentView === id) {
+      await this.setView('dashboard');
+    } else {
+      this.notify();
+    }
   }
 }
 

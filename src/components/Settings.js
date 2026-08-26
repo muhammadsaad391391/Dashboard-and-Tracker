@@ -71,6 +71,54 @@ export function renderSettings(container, state) {
       </div>
     </div>
 
+    <!-- Custom Planners Manager card -->
+    <div class="card">
+      <div class="card-title">Custom Category Planners</div>
+      <p style="font-size: 13px; color: var(--text-secondary); margin-bottom: 20px;">
+        Create customized, 7-day rolling spreadsheet grids for specific goals (e.g. "MBBS Study", "Arabic Hub", "Gym Log").
+      </p>
+
+      <!-- New Section entry -->
+      <div style="display:flex; flex-direction:column; gap:12px; margin-bottom:20px; padding:16px; background-color:var(--bg-tertiary); border:1px solid var(--border-color); border-radius:var(--radius-md);">
+        <h4 style="font-size:13px; font-weight:700; margin:0;">Create New Section</h4>
+        <div style="display:flex; gap:12px; flex-wrap:wrap; align-items:center;">
+          <input type="text" id="new-section-label" class="premium-input" placeholder="e.g. MBBS Hub" style="flex:1; min-width:180px; font-size:13px;">
+          
+          <select id="new-section-icon" class="premium-select" style="min-width:120px; font-size:13px;">
+            <option value="planner">📋 Icon: Planner</option>
+            <option value="study">📘 Icon: Study</option>
+            <option value="etsy">🍊 Icon: Etsy</option>
+            <option value="finance">💰 Icon: Money</option>
+          </select>
+          
+          <button class="btn btn-primary" id="add-section-btn" style="white-space:nowrap;">
+            ${icons.plus} Create Section
+          </button>
+        </div>
+      </div>
+
+      <!-- Existing Custom Sections List -->
+      <div style="display:flex; flex-direction:column; gap:10px;" id="custom-sections-list-area">
+        ${state.customSections.length === 0 ? `
+          <div class="cell-empty" style="padding: 20px 0; text-align:center;">No custom sections added yet. Create one above!</div>
+        ` : state.customSections.map(sec => `
+          <div style="display:flex; align-items:center; justify-content:space-between; background-color:var(--bg-tertiary); padding:12px 16px; border:1px solid var(--border-color); border-radius:var(--radius-sm);">
+            <div style="display:flex; align-items:center; gap:12px;">
+              <span class="nav-icon" style="color:var(--accent); display:flex; align-items:center; justify-content:center;">
+                ${sec.icon === 'study' ? icons.study : sec.icon === 'etsy' ? icons.etsy : sec.icon === 'finance' ? icons.finance : icons.planner}
+              </span>
+              <span style="font-size:14px; font-weight:700;">${sec.label}</span>
+              <span style="font-family:var(--font-mono); font-size:10px; color:var(--text-muted); background:var(--bg-secondary); padding:2px 6px; border-radius:4px; text-transform:uppercase;">${sec.type}</span>
+            </div>
+            
+            <button class="btn btn-danger btn-sm delete-section-btn" data-id="${sec.id}" style="padding:6px; height:28px; width:28px; justify-content:center;">
+              ${icons.trash}
+            </button>
+          </div>
+        `).join('')}
+      </div>
+    </div>
+
     <!-- System Control Danger Zone -->
     <div class="card" style="border-color: var(--danger-border); background-color: rgba(239, 68, 68, 0.02)">
       <div class="card-title" style="color:var(--danger)">Danger Zone</div>
@@ -214,6 +262,41 @@ export function renderSettings(container, state) {
       if (confirm('Delete this time interval slot? This will hide tasks scheduled at this slot across grid views.')) {
         const updated = state.timeIntervals.filter((_, i) => i !== idx);
         await state.updateTimeIntervals(updated);
+        renderSettings(container, state);
+      }
+    });
+  });
+
+  // --- Custom Category Sections Manager Listeners ---
+  const addSectionBtn = container.querySelector('#add-section-btn');
+  const newSectionLabel = container.querySelector('#new-section-label');
+  const newSectionIcon = container.querySelector('#new-section-icon');
+
+  if (addSectionBtn && newSectionLabel) {
+    const handleAddSection = async () => {
+      const label = newSectionLabel.value.trim();
+      const icon = newSectionIcon.value;
+      if (label) {
+        await state.addCustomSection(label, icon);
+        confetti({ particleCount: 40, spread: 30 });
+        renderSettings(container, state);
+      }
+    };
+    addSectionBtn.addEventListener('click', handleAddSection);
+    newSectionLabel.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') handleAddSection();
+    });
+  }
+
+  container.querySelectorAll('.delete-section-btn').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      const id = btn.getAttribute('data-id');
+      const sec = state.customSections.find(s => s.id === id);
+      if (!sec) return;
+      
+      const confirmDelete = confirm(`⚠️ WARNING: Deleting "${sec.label}" will permanently remove this planner section AND delete all tasks associated with it across all dates in your database. This action CANNOT be undone.\n\nAre you sure you want to proceed?`);
+      if (confirmDelete) {
+        await state.deleteCustomSection(id);
         renderSettings(container, state);
       }
     });

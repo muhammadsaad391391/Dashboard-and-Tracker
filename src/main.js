@@ -10,6 +10,8 @@ import { renderCalendar } from './components/Calendar.js';
 import { renderSettings } from './components/Settings.js';
 import { renderStudy } from './components/Study.js';
 import { renderEtsySeo } from './components/EtsySeo.js';
+import { renderCategoryTracker } from './components/CategoryTracker.js';
+import { icons } from './icons.js';
 
 // Elements
 const appContainer = document.getElementById('app');
@@ -61,7 +63,21 @@ function renderApp(appState) {
       renderEtsySeo(viewContainer, appState);
       break;
     default:
-      viewContainer.innerHTML = `<div class="card">View "${appState.currentView}" is not implemented.</div>`;
+      if (appState.currentView.startsWith('sec-')) {
+        const customSec = appState.customSections.find(s => s.id === appState.currentView);
+        if (customSec) {
+          let secIcon = icons.planner;
+          if (customSec.icon === 'study') secIcon = icons.study;
+          else if (customSec.icon === 'etsy') secIcon = icons.etsy;
+          else if (customSec.icon === 'finance') secIcon = icons.finance;
+          
+          renderCategoryTracker(viewContainer, appState, customSec.id, customSec.label, customSec.type, secIcon);
+        } else {
+          viewContainer.innerHTML = `<div class="card">Custom Section "${appState.currentView}" not found.</div>`;
+        }
+      } else {
+        viewContainer.innerHTML = `<div class="card">View "${appState.currentView}" is not implemented.</div>`;
+      }
   }
 
   // 3. Remove application loader once initialized & rendered
@@ -298,6 +314,10 @@ export async function performPaste() {
     let forcedType = null;
     if (state.currentView === 'study') forcedType = 'study';
     else if (state.currentView === 'etsy-seo') forcedType = 'etsy_seo';
+    else if (state.currentView.startsWith('sec-')) {
+      const customSec = state.customSections.find(s => s.id === state.currentView);
+      if (customSec) forcedType = customSec.type;
+    }
 
     const activeWeekDays = state.getDaysForActiveWeek();
 
