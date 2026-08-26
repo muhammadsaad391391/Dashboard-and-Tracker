@@ -164,70 +164,75 @@ class AppState {
   async init() {
     if (this.initialized) return;
     
-    // Seed DB if it's the first run
-    await seedDatabase();
+    try {
+      // Seed DB if it's the first run
+      await seedDatabase();
 
-    // Perform database migration to update non-negotiables to user's 10 daily essentials
-    const nnVersionSetting = await db.settings.get('non_negotiables_version');
-    const nnVersion = nnVersionSetting ? nnVersionSetting.value : 0;
-    if (nnVersion < 2) {
-      await db.nonNegotiables.clear();
-      const userEssentials = [
-        { id: 'nn-seo', name: 'SEO', order: 0 },
-        { id: 'nn-quran', name: 'Quran', order: 1 },
-        { id: 'nn-arabic', name: 'Arabic', order: 2 },
-        { id: 'nn-exercise', name: 'Exercise', order: 3 },
-        { id: 'nn-mbbs', name: 'Extraordinary in MBBS', order: 4 },
-        { id: 'nn-communication', name: 'Communication', order: 5 },
-        { id: 'nn-social', name: 'Quit Social media', order: 6 },
-        { id: 'nn-phone', name: 'Quit Mobile Phone', order: 7 },
-        { id: 'nn-read', name: 'Read Book about 10 mins daily', order: 8 },
-        { id: 'nn-schedule', name: 'Make and report daily schedule', order: 9 }
-      ];
-      await db.nonNegotiables.bulkAdd(userEssentials);
-      await db.settings.put({ key: 'non_negotiables_version', value: 2 });
+      // Perform database migration to update non-negotiables to user's 10 daily essentials
+      const nnVersionSetting = await db.settings.get('non_negotiables_version');
+      const nnVersion = nnVersionSetting ? nnVersionSetting.value : 0;
+      if (nnVersion < 2) {
+        await db.nonNegotiables.clear();
+        const userEssentials = [
+          { id: 'nn-seo', name: 'SEO', order: 0 },
+          { id: 'nn-quran', name: 'Quran', order: 1 },
+          { id: 'nn-arabic', name: 'Arabic', order: 2 },
+          { id: 'nn-exercise', name: 'Exercise', order: 3 },
+          { id: 'nn-mbbs', name: 'Extraordinary in MBBS', order: 4 },
+          { id: 'nn-communication', name: 'Communication', order: 5 },
+          { id: 'nn-social', name: 'Quit Social media', order: 6 },
+          { id: 'nn-phone', name: 'Quit Mobile Phone', order: 7 },
+          { id: 'nn-read', name: 'Read Book about 10 mins daily', order: 8 },
+          { id: 'nn-schedule', name: 'Make and report daily schedule', order: 9 }
+        ];
+        await db.nonNegotiables.bulkAdd(userEssentials);
+        await db.settings.put({ key: 'non_negotiables_version', value: 2 });
+      }
+      
+      // Load theme from settings
+      const themeSetting = await db.settings.get('theme');
+      this.theme = themeSetting ? themeSetting.value : 'light';
+      document.documentElement.className = this.theme;
+
+      // Load active view
+      const viewSetting = await db.settings.get('current_view');
+      this.currentView = viewSetting ? viewSetting.value : 'dashboard';
+
+      // Load active date setting
+      const activeDateSetting = await db.settings.get('active_date');
+      this.activeDate = activeDateSetting ? activeDateSetting.value : this.getTodayDateStr();
+      await this.ensureActiveWeekExists(this.activeDate);
+
+      // Load custom sections setting
+      const sectionsSetting = await db.settings.get('custom_sections');
+      this.customSections = sectionsSetting ? sectionsSetting.value : [];
+
+      // Load cloud sync & AI settings
+      const syncCodeSetting = await db.settings.get('sync_code');
+      this.syncCode = syncCodeSetting ? syncCodeSetting.value : '';
+
+      const syncEnabledSetting = await db.settings.get('sync_enabled');
+      this.syncEnabled = syncEnabledSetting ? !!syncEnabledSetting.value : false;
+
+      const geminiKeySetting = await db.settings.get('gemini_api_key');
+      const dbKey = geminiKeySetting ? geminiKeySetting.value : '';
+      const envKey = import.meta.env.VITE_GEMINI_API_KEY || '';
+      this.geminiApiKey = dbKey || envKey;
+
+      const availTimeSetting = await db.settings.get('available_time_today');
+      this.availableTimeToday = availTimeSetting ? availTimeSetting.value : '2h';
+
+      // Set initial sidebar collapse status for wide views
+      const view = this.currentView;
+      this.sidebarCollapsed = (view === 'planner' || view === 'study' || view === 'etsy-seo' || view === 'finance' || view === 'calendar' || view.startsWith('sec-'));
+
+      await this.fetchData();
+      this.initialized = true;
+      this.notify();
+    } catch (err) {
+      console.error("Initialization failed:", err);
+      alert("Aether Init Error: " + err.message + "\nStack: " + err.stack);
     }
-    
-    // Load theme from settings
-    const themeSetting = await db.settings.get('theme');
-    this.theme = themeSetting ? themeSetting.value : 'light';
-    document.documentElement.className = this.theme;
-
-    // Load active view
-    const viewSetting = await db.settings.get('current_view');
-    this.currentView = viewSetting ? viewSetting.value : 'dashboard';
-
-    // Load active date setting
-    const activeDateSetting = await db.settings.get('active_date');
-    this.activeDate = activeDateSetting ? activeDateSetting.value : this.getTodayDateStr();
-    await this.ensureActiveWeekExists(this.activeDate);
-
-    // Load custom sections setting
-    const sectionsSetting = await db.settings.get('custom_sections');
-    this.customSections = sectionsSetting ? sectionsSetting.value : [];
-
-    // Load cloud sync & AI settings
-    const syncCodeSetting = await db.settings.get('sync_code');
-    this.syncCode = syncCodeSetting ? syncCodeSetting.value : '';
-
-    const syncEnabledSetting = await db.settings.get('sync_enabled');
-    this.syncEnabled = syncEnabledSetting ? !!syncEnabledSetting.value : false;
-
-    const geminiKeySetting = await db.settings.get('gemini_api_key');
-    const dbKey = geminiKeySetting ? geminiKeySetting.value : '';
-    const envKey = import.meta.env.VITE_GEMINI_API_KEY || '';
-    this.geminiApiKey = dbKey || envKey;
-
-    const availTimeSetting = await db.settings.get('available_time_today');
-    this.availableTimeToday = availTimeSetting ? availTimeSetting.value : '2h';
-
-    // Set initial sidebar collapse status for wide views
-    const view = this.currentView;
-    this.sidebarCollapsed = (view === 'planner' || view === 'study' || view === 'etsy-seo' || view === 'finance' || view === 'calendar' || view.startsWith('sec-'));
-
-    await this.fetchData();
-    this.initialized = true;
-    this.notify();
   }
 
   // Fetch lists directly from IndexedDB
