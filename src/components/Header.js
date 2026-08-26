@@ -35,7 +35,7 @@ export function renderHeader(container, state) {
   const showToggle = !!state.sidebarCollapsed;
 
   container.innerHTML = `
-    <div class="header-title-area" style="display:flex; align-items:center; gap:16px;">
+    <div class="header-title-area" style="display:flex; flex-direction:row; align-items:center; gap:16px;">
       ${showToggle ? `
         <button class="theme-toggle-btn" id="sidebar-collapse-toggle" style="width:36px; height:36px; padding:0; justify-content:center; display:flex; align-items:center;" title="Expand Sidebar">
           <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="3" x2="21" y1="6" y2="6"/><line x1="3" x2="21" y1="12" y2="12"/><line x1="3" x2="21" y1="18" y2="18"/></svg>
