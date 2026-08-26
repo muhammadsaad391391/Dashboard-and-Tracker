@@ -56,7 +56,12 @@ export function renderHeader(container, state) {
       </div>
     </div>
     
-    <div class="header-metrics">
+    <div class="header-metrics" style="display:flex; align-items:center; gap:20px;">
+      <!-- Theme Toggle Button -->
+      <button class="theme-toggle-btn" id="header-theme-toggle" style="width:36px; height:36px; padding:0; display:flex; align-items:center; justify-content:center; border:1px solid var(--border-color); border-radius:var(--radius-sm); cursor:pointer; color:var(--text-secondary); background:none;" title="Toggle Theme">
+        ${state.theme === 'dark' ? icons.sun : icons.moon}
+      </button>
+
       <div class="header-metric-item">
         <span class="header-metric-val success-text">${completionPercentage}%</span>
         <span class="header-metric-lbl">Completion</span>
@@ -160,6 +165,14 @@ export function renderHeader(container, state) {
       const nextStr = state.getTodayDateStr();
       await state.setActiveDate(nextStr);
       state.setExpandedDayDate(nextStr);
+    });
+  }
+
+  const headerThemeToggle = container.querySelector('#header-theme-toggle');
+  if (headerThemeToggle) {
+    headerThemeToggle.addEventListener('click', () => {
+      const nextTheme = state.theme === 'dark' ? 'light' : 'dark';
+      state.setTheme(nextTheme);
     });
   }
 }

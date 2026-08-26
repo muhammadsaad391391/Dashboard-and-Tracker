@@ -4,7 +4,7 @@ import { getRandomQuote } from './quotes.js';
 class AppState {
   constructor() {
     this.currentView = 'dashboard';
-    this.theme = 'dark';
+    this.theme = 'light';
     this.days = [];
     this.nonNegotiables = [];
     this.timeIntervals = [];
@@ -190,7 +190,7 @@ class AppState {
     
     // Load theme from settings
     const themeSetting = await db.settings.get('theme');
-    this.theme = themeSetting ? themeSetting.value : 'dark';
+    this.theme = themeSetting ? themeSetting.value : 'light';
     document.documentElement.className = this.theme;
 
     // Load active view
