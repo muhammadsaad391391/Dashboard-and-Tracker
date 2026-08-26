@@ -214,7 +214,9 @@ class AppState {
     this.syncEnabled = syncEnabledSetting ? !!syncEnabledSetting.value : false;
 
     const geminiKeySetting = await db.settings.get('gemini_api_key');
-    this.geminiApiKey = geminiKeySetting ? geminiKeySetting.value : '';
+    const dbKey = geminiKeySetting ? geminiKeySetting.value : '';
+    const envKey = import.meta.env.VITE_GEMINI_API_KEY || '';
+    this.geminiApiKey = dbKey || envKey;
 
     const availTimeSetting = await db.settings.get('available_time_today');
     this.availableTimeToday = availTimeSetting ? availTimeSetting.value : '2h';
