@@ -16,6 +16,10 @@ db.version(2).stores({
   projects: '++id, name, deadline, status, priority, type'
 });
 
+db.on('blocked', () => {
+  alert("⚠️ Database upgrade is blocked! Please close all other tabs of Aether open on your phone or laptop, and refresh this page to complete the upgrade.");
+});
+
 // Helper to format Date safe from timezone offsets
 export function getFormattedDate(year, month, day) {
   const m = String(month).padStart(2, '0');
