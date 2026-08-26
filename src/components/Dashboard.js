@@ -179,11 +179,7 @@ export function renderDashboard(container, state) {
               return `
                 <div class="task-row ${statusClass}" data-task-id="${task.id}" style="margin-bottom: 8px;">
                   <div class="task-info-side" style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap; flex: 1; min-width: 0;">
-                    <select class="dashboard-time-slot-select" data-task-id="${task.id}" data-current-time="${slot}" style="font-family:var(--font-mono); font-size:10px; font-weight:700; padding: 2px 6px; border-radius: 4px; border: 1px solid var(--border-color); background-color: var(--bg-tertiary); color: var(--text-primary); outline: none; cursor: pointer; transition: border-color 0.2s;">
-                      ${state.timeIntervals.map(t => `
-                        <option value="${t}" ${t === slot ? 'selected' : ''}>${t}</option>
-                      `).join('')}
-                    </select>
+                    <span class="task-time-lbl editable-time-slot" data-time="${slot}" style="background-color: var(--bg-tertiary); cursor: pointer;" title="Double-click to rename time slot globally">${slot}</span>
                     <span class="task-name-lbl" title="${task.name}" style="overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 150px; font-weight: 600;">${task.name}</span>
                     ${typeBadge}
                   </div>
@@ -205,7 +201,7 @@ export function renderDashboard(container, state) {
               return `
                 <div class="task-row empty-slot" style="margin-bottom: 8px; opacity: 0.65; background-color: transparent; border-style: dashed; padding: 10px 16px;">
                   <div class="task-info-side" style="display: flex; align-items: center; gap: 8px;">
-                    <span class="task-time-lbl" style="background-color: var(--bg-tertiary);">${slot}</span>
+                    <span class="task-time-lbl editable-time-slot" data-time="${slot}" style="background-color: var(--bg-tertiary); cursor: pointer;" title="Double-click to rename time slot globally">${slot}</span>
                     <span class="task-name-lbl" style="color: var(--text-secondary); font-style: italic; font-size: 13px;">Free Slot</span>
                   </div>
                   <div class="task-actions-side">
@@ -294,38 +290,12 @@ export function renderDashboard(container, state) {
     });
   }
 
-  // Reschedule Time Slot Change Handler
-  container.querySelectorAll('.dashboard-time-slot-select').forEach(select => {
-    select.addEventListener('change', async (e) => {
-      const taskId = select.getAttribute('data-task-id');
-      const oldSlot = select.getAttribute('data-current-time');
-      const newSlot = e.target.value;
-      
-      if (oldSlot === newSlot) return;
-      
-      // Check if there is already a task in the target slot
-      const existingTask = activeDay.schedule.find(t => t.plannedTime === newSlot);
-      if (existingTask) {
-        alert(`Reschedule Aborted: The slot "${newSlot}" is already occupied by the task "${existingTask.name}". Please clear or reschedule that task first.`);
-        select.value = oldSlot; // Revert select value
-        return;
-      }
-      
-      // Update task plannedTime
-      const taskIndex = activeDay.schedule.findIndex(t => t.id === taskId);
-      if (taskIndex !== -1) {
-        activeDay.schedule[taskIndex].plannedTime = newSlot;
-        
-        // Sort schedule chronologically based on state.timeIntervals order
-        activeDay.schedule.sort((a, b) => {
-          const indexA = state.timeIntervals.indexOf(a.plannedTime);
-          const indexB = state.timeIntervals.indexOf(b.plannedTime);
-          return indexA - indexB;
-        });
-        
-        await state.updateDay(activeDay.date, { schedule: activeDay.schedule });
-        showToast(`Rescheduled task to ${newSlot}`);
-      }
+  // Global Time Slot Rename Handler (on double-click of time badges)
+  container.querySelectorAll('.editable-time-slot').forEach(badge => {
+    badge.addEventListener('dblclick', (e) => {
+      e.stopPropagation();
+      const oldTime = badge.getAttribute('data-time');
+      enterTimeSlotRenameMode(badge, oldTime, state, container);
     });
   });
 
@@ -595,7 +565,11 @@ function enterDashboardTaskEditMode(row, task, activeDay, state, container) {
   
   row.innerHTML = `
     <div class="task-info-side" style="display: flex; align-items: center; gap: 8px; flex: 1; margin-right: 8px; flex-wrap: wrap;">
-      <span class="task-time-lbl">${task.plannedTime}</span>
+      <select class="premium-select edit-dashboard-slot-select" style="flex: 1.5; min-width: 140px; height: 28px; font-size: 11px; padding: 2px 4px; font-family:var(--font-mono); font-weight:700;">
+        ${state.timeIntervals.map(t => `
+          <option value="${t}" ${task.plannedTime === t ? 'selected' : ''}>${t}</option>
+        `).join('')}
+      </select>
       <input type="text" class="premium-input edit-dashboard-input" value="${task.name}" style="flex: 2; font-size: 13px; height: 28px; padding: 4px 8px; background-color: var(--bg-secondary); border: 1px solid var(--border-color); border-radius: var(--radius-sm); color: var(--text-primary); outline: none;" autofocus>
       
       <select class="premium-select edit-dashboard-type-select" style="flex: 1; min-width: 100px; height: 28px; font-size: 12px; padding: 2px 4px;">
@@ -611,6 +585,7 @@ function enterDashboardTaskEditMode(row, task, activeDay, state, container) {
   `;
 
   const input = row.querySelector('.edit-dashboard-input');
+  const slotSelect = row.querySelector('.edit-dashboard-slot-select');
   const typeSelect = row.querySelector('.edit-dashboard-type-select');
   const cancelBtn = row.querySelector('.cancel-dashboard-edit');
   const saveBtn = row.querySelector('.save-dashboard-edit');
@@ -623,10 +598,30 @@ function enterDashboardTaskEditMode(row, task, activeDay, state, container) {
 
   const saveEdit = async () => {
     const newName = input.value.trim();
+    const newSlot = slotSelect.value;
     const newType = typeSelect.value;
+    
     if (newName) {
+      // Rescheduling collision check
+      if (newSlot !== task.plannedTime) {
+        const existingTask = activeDay.schedule.find(t => t.plannedTime === newSlot);
+        if (existingTask) {
+          alert(`Reschedule Aborted: The slot "${newSlot}" is already occupied by the task "${existingTask.name}". Please clear or reschedule that task first.`);
+          return;
+        }
+        task.plannedTime = newSlot;
+      }
+      
       task.name = newName;
       task.type = newType;
+      
+      // Sort schedule
+      activeDay.schedule.sort((a, b) => {
+        const idxA = state.timeIntervals.indexOf(a.plannedTime);
+        const idxB = state.timeIntervals.indexOf(b.plannedTime);
+        return idxA - idxB;
+      });
+      
       await state.updateDay(activeDay.date, { schedule: activeDay.schedule });
       renderDashboard(container, state);
     } else {
@@ -650,6 +645,46 @@ function enterDashboardTaskEditMode(row, task, activeDay, state, container) {
     if (e.key === 'Escape') {
       e.stopPropagation();
       renderDashboard(container, state);
+    }
+  });
+}
+
+function enterTimeSlotRenameMode(badgeEl, oldTime, state, container) {
+  if (badgeEl.querySelector('input')) return;
+  const originalHTML = badgeEl.innerHTML;
+  
+  badgeEl.innerHTML = `
+    <input type="text" class="premium-input rename-slot-input" value="${oldTime}" style="width: 140px; font-family:var(--font-mono); font-size:10px; font-weight:700; padding: 2px 4px; border: 1px solid var(--border-color); border-radius: 4px; background-color: var(--bg-secondary); color: var(--text-primary); outline: none; display: inline-block; vertical-align: middle;" autofocus>
+  `;
+  
+  const input = badgeEl.querySelector('.rename-slot-input');
+  input.focus();
+  input.select();
+  
+  const saveRename = async () => {
+    const newVal = input.value.trim();
+    if (newVal && newVal !== oldTime) {
+      if (state.timeIntervals.includes(newVal)) {
+        alert(`The slot "${newVal}" already exists in settings.`);
+        badgeEl.innerHTML = originalHTML;
+        return;
+      }
+      await state.renameTimeInterval(oldTime, newVal);
+      renderDashboard(container, state);
+    } else {
+      badgeEl.innerHTML = originalHTML;
+    }
+  };
+
+  input.addEventListener('blur', saveRename);
+  input.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') {
+      e.stopPropagation();
+      saveRename();
+    }
+    if (e.key === 'Escape') {
+      e.stopPropagation();
+      badgeEl.innerHTML = originalHTML;
     }
   });
 }

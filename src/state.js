@@ -289,6 +289,36 @@ class AppState {
     this.notify();
   }
 
+  // Rename a specific time interval and migrate scheduled tasks
+  async renameTimeInterval(oldVal, newVal) {
+    const idx = this.timeIntervals.indexOf(oldVal);
+    if (idx === -1) return;
+
+    this.timeIntervals[idx] = newVal;
+    await db.settings.put({ key: 'time_intervals', value: this.timeIntervals });
+
+    const updatesMap = [];
+    this.days.forEach(day => {
+      let changed = false;
+      const schedule = day.schedule.map(task => {
+        if (task.plannedTime === oldVal) {
+          changed = true;
+          return { ...task, plannedTime: newVal };
+        }
+        return task;
+      });
+      if (changed) {
+        updatesMap.push({ date: day.date, updates: { schedule } });
+      }
+    });
+
+    if (updatesMap.length > 0) {
+      await this.updateDaysBulk(updatesMap);
+    } else {
+      this.notify();
+    }
+  }
+
   // Set application light/dark theme
   async setTheme(theme) {
     this.theme = theme;

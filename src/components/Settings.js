@@ -246,11 +246,10 @@ export function renderSettings(container, state) {
       const idx = parseInt(btn.getAttribute('data-index'));
       const input = container.querySelector(`#interval-edit-${idx}`);
       const newVal = input.value.trim();
+      const oldVal = state.timeIntervals[idx];
       
-      if (newVal) {
-        const updated = [...state.timeIntervals];
-        updated[idx] = newVal;
-        await state.updateTimeIntervals(updated);
+      if (newVal && newVal !== oldVal) {
+        await state.renameTimeInterval(oldVal, newVal);
       }
       renderSettings(container, state);
     });
