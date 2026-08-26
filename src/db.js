@@ -16,15 +16,18 @@ export function getFormattedDate(year, month, day) {
   return `${year}-${m}-${d}`;
 }
 
-// Generate the 21 dates in the challenge
-// Generate the 21 dates in the challenge
-export function generateChallengeDates() {
+// Generate the 7 dates of the week containing the given date
+export function generateWeekDatesForDate(dateObj) {
+  const dayOfWeek = dateObj.getDay();
+  const diffToMonday = dayOfWeek === 0 ? -6 : 1 - dayOfWeek;
+  
+  const monday = new Date(dateObj);
+  monday.setDate(dateObj.getDate() + diffToMonday);
+  
   const dates = [];
-  // Start: June 22, 2026
-  // End: July 12, 2026
-  for (let i = 0; i < 21; i++) {
-    const d = new Date(2026, 5, 22); // 5 = June 22
-    d.setDate(d.getDate() + i);
+  for (let i = 0; i < 7; i++) {
+    const d = new Date(monday);
+    d.setDate(monday.getDate() + i);
     const year = d.getFullYear();
     const month = d.getMonth() + 1;
     const day = d.getDate();
@@ -38,12 +41,12 @@ export function generateChallengeDates() {
   return dates;
 }
 
-// Seed Database with Initial 30 days and default non-negotiables
+// Seed Database with current week and default non-negotiables
 export async function seedDatabase() {
   const dayCount = await db.days.count();
   if (dayCount > 0) return; // Already seeded
 
-  console.log("Seeding database with 30-day challenge...");
+  console.log("Seeding database with initial week...");
 
   // 1. Seed global non-negotiables (user's daily essentials)
   const defaultNonNegotiables = [
@@ -60,9 +63,9 @@ export async function seedDatabase() {
   ];
   await db.nonNegotiables.bulkAdd(defaultNonNegotiables);
 
-  // 2. Generate 30 challenge days
-  const challengeDates = generateChallengeDates();
-  const daysToSeed = challengeDates.map((d) => {
+  // 2. Generate current week's days
+  const weekDates = generateWeekDatesForDate(new Date());
+  const daysToSeed = weekDates.map((d) => {
     return {
       date: d.dateStr,
       dayIndex: d.dayIndex,

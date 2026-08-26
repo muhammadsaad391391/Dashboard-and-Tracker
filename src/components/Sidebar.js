@@ -60,7 +60,7 @@ export function renderSidebar(container, state) {
         </svg>
         <div class="progress-info">
           <span class="progress-percentage">${completionPercentage}%</span>
-          <span class="progress-label">Challenge progress</span>
+          <span class="progress-label">Task Completion</span>
         </div>
       </div>
       

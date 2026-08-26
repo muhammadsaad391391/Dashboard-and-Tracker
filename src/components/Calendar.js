@@ -2,82 +2,52 @@ import { icons } from '../icons.js';
 import { isDaySuccessful } from './Header.js';
 
 export function renderCalendar(container, state) {
-  // We need to render June 2026 and July 2026 side-by-side or stacked.
-  // Challenge runs: June 13, 2026 -> July 12, 2026.
+  const activeDate = state.getActiveDate();
+  const [activeYear, activeMonth, activeDay] = activeDate.split('-').map(Number);
+  
+  // Calculate first day of the month and its weekday offset (Mon-Sun)
+  const firstDayOfMonth = new Date(activeYear, activeMonth - 1, 1);
+  const startOffset = (firstDayOfMonth.getDay() + 6) % 7; // Sunday=6, Monday=0, Tuesday=1...
+  
+  const totalDaysInMonth = new Date(activeYear, activeMonth, 0).getDate();
+  const monthName = firstDayOfMonth.toLocaleDateString('en-US', { month: 'long' });
   
   // Weekday headers (Monday first)
   const weekdays = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
   const weekdayHeaderHtml = weekdays.map(w => `<div class="calendar-weekday">${w}</div>`).join('');
-
-  // 1. Generate June 2026 Grid
-  // June 1, 2026 is a Monday (index 0 in Mon-Sun scale)
-  const juneOffset = 0; // Monday start
-  const juneDaysCount = 30;
-  const juneCells = [];
   
-  // Fill offset cells (none needed since June 1 is Monday, but let's calculate programmatically)
-  // Get day of week for June 1: (Date.getDay() returns 0 for Sunday, 1 for Monday...)
-  // To map Sunday=6, Monday=0, Tuesday=1 ...
-  const juneFirstDay = new Date(2026, 5, 1);
-  const juneStartOffset = (juneFirstDay.getDay() + 6) % 7; // Sunday=6, Monday=0, Tue=1...
+  const cells = [];
   
-  for (let i = 0; i < juneStartOffset; i++) {
-    juneCells.push(`<div class="calendar-cell inactive"></div>`);
+  // Fill offset cells
+  for (let i = 0; i < startOffset; i++) {
+    cells.push(`<div class="calendar-cell inactive"></div>`);
   }
   
-  for (let d = 1; d <= juneDaysCount; d++) {
-    const dateStr = `2026-06-${String(d).padStart(2, '0')}`;
+  // Fill days of the month
+  for (let d = 1; d <= totalDaysInMonth; d++) {
+    const dateStr = `${activeYear}-${String(activeMonth).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
     const dayData = state.days.find(day => day.date === dateStr);
     
-    juneCells.push(renderDayCell(d, dateStr, dayData, state));
+    cells.push(renderDayCell(d, dateStr, dayData, state));
   }
-
-  // 2. Generate July 2026 Grid
-  // July 1, 2026 is a Wednesday (index 2 in Mon-Sun scale)
-  const julyFirstDay = new Date(2026, 6, 1);
-  const julyStartOffset = (julyFirstDay.getDay() + 6) % 7; 
-  const julyDaysCount = 31;
-  const julyCells = [];
-
-  // Offset cells
-  for (let i = 0; i < julyStartOffset; i++) {
-    julyCells.push(`<div class="calendar-cell inactive"></div>`);
-  }
-
-  for (let d = 1; d <= julyDaysCount; d++) {
-    const dateStr = `2026-07-${String(d).padStart(2, '0')}`;
-    const dayData = state.days.find(day => day.date === dateStr);
-
-    julyCells.push(renderDayCell(d, dateStr, dayData, state));
-  }
-
+  
   container.innerHTML = `
     <div style="display:flex; flex-direction:column; gap:32px;">
       
-      <!-- JUNE 2026 CARD -->
+      <!-- MONTHLY HEATMAP CARD -->
       <div class="card" style="margin-bottom: 0;">
-        <div class="card-title" style="margin-bottom:20px;">
-          <span>June 2026</span>
-          <span style="font-size:12px; color:var(--text-muted); font-family:var(--font-mono)">Challenge Days 1 - 9</span>
-        </div>
-        <div class="calendar-grid-wrapper">
-          <div class="calendar-grid" style="grid-template-columns: repeat(7, 1fr);">
-            ${weekdayHeaderHtml}
-            ${juneCells.join('')}
+        <div class="card-title" style="margin-bottom:20px; display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px;">
+          <div style="display:flex; align-items:center; gap:12px;">
+            <button class="btn btn-secondary btn-sm" id="calendar-prev-month-btn" style="padding: 2px 8px; font-size:11px; height:24px;">◀ Prev Month</button>
+            <span style="font-size: 16px; font-weight:800; color:var(--text-primary); text-align:center; min-width:130px;">${monthName} ${activeYear}</span>
+            <button class="btn btn-secondary btn-sm" id="calendar-next-month-btn" style="padding: 2px 8px; font-size:11px; height:24px;">Next Month ▶</button>
           </div>
-        </div>
-      </div>
-
-      <!-- JULY 2026 CARD -->
-      <div class="card" style="margin-bottom: 0;">
-        <div class="card-title" style="margin-bottom:20px;">
-          <span>July 2026</span>
-          <span style="font-size:12px; color:var(--text-muted); font-family:var(--font-mono)">Challenge Days 10 - 21</span>
+          <button class="btn btn-secondary btn-sm" id="calendar-current-month-btn" style="padding: 2px 8px; font-size:11px; height:24px;">Current Month</button>
         </div>
         <div class="calendar-grid-wrapper">
           <div class="calendar-grid" style="grid-template-columns: repeat(7, 1fr);">
             ${weekdayHeaderHtml}
-            ${julyCells.join('')}
+            ${cells.join('')}
           </div>
         </div>
       </div>
@@ -87,22 +57,52 @@ export function renderCalendar(container, state) {
 
   // Attach event click handlers
   container.querySelectorAll('.calendar-cell[data-date]').forEach(cell => {
-    cell.addEventListener('click', () => {
+    cell.addEventListener('click', async () => {
       const date = cell.getAttribute('data-date');
+      await state.setActiveDate(date);
       state.setExpandedDayDate(date);
       state.setView('planner');
     });
   });
+
+  // Attach Month navigation listeners
+  container.querySelector('#calendar-prev-month-btn').addEventListener('click', async () => {
+    const d = new Date(activeYear, activeMonth - 2, 15);
+    const yStr = d.getFullYear();
+    const mStr = String(d.getMonth() + 1).padStart(2, '0');
+    const dStr = String(d.getDate()).padStart(2, '0');
+    await state.setActiveDate(`${yStr}-${mStr}-${dStr}`);
+  });
+
+  container.querySelector('#calendar-next-month-btn').addEventListener('click', async () => {
+    const d = new Date(activeYear, activeMonth, 15);
+    const yStr = d.getFullYear();
+    const mStr = String(d.getMonth() + 1).padStart(2, '0');
+    const dStr = String(d.getDate()).padStart(2, '0');
+    await state.setActiveDate(`${yStr}-${mStr}-${dStr}`);
+  });
+
+  container.querySelector('#calendar-current-month-btn').addEventListener('click', async () => {
+    await state.setActiveDate(state.getTodayDateStr());
+  });
 }
 
 function renderDayCell(dayNum, dateStr, dayData, state) {
-  // If not inside challenge, render grayed cell
+  // If no dayData exists in IndexedDB yet, render as clickable blank neutral cell
   if (!dayData) {
-    return `<div class="calendar-cell inactive"><span class="calendar-cell-num">${dayNum}</span></div>`;
+    const todayStr = state.getTodayDateStr();
+    const isToday = dateStr === todayStr;
+    return `
+      <div class="calendar-cell ${isToday ? 'today-highlight' : ''}" data-date="${dateStr}" style="cursor: pointer; opacity: 0.65; border: 1px dashed var(--border-color);">
+        <span class="calendar-cell-num">${dayNum}</span>
+        <div class="calendar-cell-info">
+          <span class="calendar-cell-rate" style="font-size: 8px; color: var(--text-muted); text-transform:lowercase;">unlogged</span>
+        </div>
+      </div>
+    `;
   }
 
   // Calculate day completion status: Green (Success), Yellow (Mixed), Red (Poor)
-  // Default is neutral if user hasn't logged anything yet.
   const totalTasks = dayData.schedule.length;
   const completedTasks = dayData.schedule.filter(t => t.status === 'completed' || t.status === 'delayed').length;
   const taskRate = totalTasks > 0 ? completedTasks / totalTasks : 0;
@@ -121,10 +121,7 @@ function renderDayCell(dayNum, dateStr, dayData, state) {
   let performanceLabel = '';
 
   if (hasInteracted) {
-    // Evaluation rules
     const isSuccessful = isDaySuccessful(dayData);
-    
-    // Poor day if completion rate < 30% and satisfaction < 5
     const isPoor = (totalTasks > 0 && taskRate < 0.3) && (satScore !== null && satScore <= 4) && (completedNonNegs <= 1);
 
     if (isSuccessful) {
@@ -140,10 +137,12 @@ function renderDayCell(dayNum, dateStr, dayData, state) {
   }
 
   const completionPercentText = totalTasks > 0 ? `${Math.round(taskRate * 100)}%` : '0%';
+  const todayStr = state.getTodayDateStr();
+  const isToday = dateStr === todayStr;
 
   return `
-    <div class="calendar-cell ${statusClass}" data-date="${dateStr}">
-      <span class="calendar-cell-num">${dayNum}</span>
+    <div class="calendar-cell ${statusClass} ${isToday ? 'today-highlight' : ''}" data-date="${dateStr}" style="cursor: pointer;">
+      <span class="calendar-cell-num" style="${isToday ? 'font-weight: 800; text-decoration: underline;' : ''}">${dayNum}</span>
       <div class="calendar-cell-info">
         <span class="calendar-cell-rate">${hasInteracted ? completionPercentText : ''}</span>
         <span class="calendar-cell-sat">${hasInteracted ? performanceLabel : ''}</span>

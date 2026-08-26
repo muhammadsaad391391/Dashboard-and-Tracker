@@ -3,11 +3,11 @@ import { calculateStreak } from './Header.js';
 import confetti from 'canvas-confetti';
 
 export function renderDashboard(container, state) {
-  // 1. Identify the active day index
-  const activeDayIndex = state.getActiveDayIndex();
+  // 1. Identify the active date
+  const activeDate = state.getActiveDate();
 
   // Get active day data
-  const activeDay = state.days.find(d => d.dayIndex === activeDayIndex);
+  const activeDay = state.days.find(d => d.date === activeDate);
   if (!activeDay) {
     container.innerHTML = `<div class="card">Error: Active day not found.</div>`;
     return;
@@ -57,7 +57,7 @@ export function renderDashboard(container, state) {
   const completionPercentage = totalTasks > 0 ? Math.round((completedTasksCount / totalTasks) * 100) : 0;
   const avgSatisfaction = ratedDaysCount > 0 ? (satisfactionSum / ratedDaysCount).toFixed(1) : 'N/A';
   const totalProfit = totalRevenue - totalExpenses;
-  const currentStreak = calculateStreak(state.days);
+  const currentStreak = calculateStreak(state.days, activeDate);
 
   // Determine encouragement message based on streak and completion
   let streakMessage = "Every day is a new chance to stack wins. Start ticking tasks!";
@@ -146,13 +146,13 @@ export function renderDashboard(container, state) {
       <!-- Day's Daily Schedule -->
       <div class="card">
         <div class="card-title">
-          <div style="display:flex; align-items:center; gap:8px;">
+          <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
             <span style="white-space: nowrap;">Daily Schedule:</span>
-            <select id="dashboard-day-selector" style="font-weight:600; padding: 4px 24px 4px 10px; font-size:13px; height:28px; border-radius:var(--radius-sm); border:1px solid var(--border-color); background-color:var(--bg-secondary); cursor:pointer; outline:none; color:var(--text-primary);">
-              ${state.days.map(d => `
-                <option value="${d.dayIndex}" ${d.dayIndex === activeDayIndex ? 'selected' : ''}>Day ${d.dayIndex} (${d.date.substring(5)})</option>
-              `).join('')}
-            </select>
+            <div style="display:flex; align-items:center; gap:4px;">
+              <button class="btn btn-secondary btn-sm" id="dashboard-prev-day-btn" style="padding: 2px 6px; font-size: 11px; height: 22px; display:flex; align-items:center; justify-content:center;">◀</button>
+              <input type="date" id="dashboard-date-input" value="${activeDate}" style="font-family:var(--font-sans); font-weight:700; padding: 2px 8px; font-size:11px; height:22px; border-radius:4px; border:1px solid var(--border-color); background-color:var(--bg-secondary); cursor:pointer; outline:none; color:var(--text-primary);">
+              <button class="btn btn-secondary btn-sm" id="dashboard-next-day-btn" style="padding: 2px 6px; font-size: 11px; height: 22px; display:flex; align-items:center; justify-content:center;">▶</button>
+            </div>
           </div>
           <button class="btn btn-secondary btn-sm" id="goto-planner-btn">Open Planner</button>
         </div>
@@ -254,11 +254,36 @@ export function renderDashboard(container, state) {
     gotoNonNeg.addEventListener('click', () => state.setView('non-negotiables'));
   }
 
-  // Day Selector Change Handler
-  const daySelector = container.querySelector('#dashboard-day-selector');
-  if (daySelector) {
-    daySelector.addEventListener('change', (e) => {
-      state.setActiveDayIndex(e.target.value);
+  // Date Selector Handlers
+  const dbDateInput = container.querySelector('#dashboard-date-input');
+  if (dbDateInput) {
+    dbDateInput.addEventListener('change', async (e) => {
+      const val = e.target.value;
+      if (val) await state.setActiveDate(val);
+    });
+  }
+
+  const dbPrevBtn = container.querySelector('#dashboard-prev-day-btn');
+  if (dbPrevBtn) {
+    dbPrevBtn.addEventListener('click', async () => {
+      const current = new Date(state.getActiveDate());
+      current.setDate(current.getDate() - 1);
+      const y = current.getFullYear();
+      const m = String(current.getMonth() + 1).padStart(2, '0');
+      const d = String(current.getDate()).padStart(2, '0');
+      await state.setActiveDate(`${y}-${m}-${d}`);
+    });
+  }
+
+  const dbNextBtn = container.querySelector('#dashboard-next-day-btn');
+  if (dbNextBtn) {
+    dbNextBtn.addEventListener('click', async () => {
+      const current = new Date(state.getActiveDate());
+      current.setDate(current.getDate() + 1);
+      const y = current.getFullYear();
+      const m = String(current.getMonth() + 1).padStart(2, '0');
+      const d = String(current.getDate()).padStart(2, '0');
+      await state.setActiveDate(`${y}-${m}-${d}`);
     });
   }
 

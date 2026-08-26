@@ -299,11 +299,13 @@ export async function performPaste() {
     if (state.currentView === 'study') forcedType = 'study';
     else if (state.currentView === 'etsy-seo') forcedType = 'etsy_seo';
 
+    const activeWeekDays = state.getDaysForActiveWeek();
+
     state.clipboard.tasks.forEach(task => {
       const targetColIdx = targetAnchor.colIdx + task.colOffset;
       const targetRowIdx = targetAnchor.rowIdx + task.rowOffset;
 
-      const day = state.days[targetColIdx];
+      const day = activeWeekDays[targetColIdx];
       const timeSlot = state.timeIntervals[targetRowIdx];
 
       if (day && timeSlot) {

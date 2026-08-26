@@ -1,7 +1,7 @@
 export function renderHeader(container, state) {
-  const currentChallengeDay = state.getActiveDayIndex();
-  const activeDay = state.days.find(d => d.dayIndex === currentChallengeDay);
-  const dateLabel = activeDay ? activeDay.label : "June 13, 2026";
+  const activeDate = state.getActiveDate();
+  const activeDay = state.days.find(d => d.date === activeDate);
+  const dateLabel = activeDay ? `${activeDay.weekday}, ${activeDay.label}` : activeDate;
 
   // Calculate task completions
   let totalTasks = 0;
@@ -38,13 +38,14 @@ export function renderHeader(container, state) {
         <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="18" height="18" x="3" y="3" rx="2"/><path d="M9 3v18"/></svg>
       </button>
       <div style="display:flex; flex-direction:column;">
-        <div style="display:flex; align-items:center; gap:8px;">
+        <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
           <span class="header-subtitle" style="white-space: nowrap;">Focus Day:</span>
-          <select id="global-header-day-selector" style="font-family:var(--font-sans); font-weight:700; padding: 2px 24px 2px 8px; font-size:11px; height:22px; border-radius:4px; border:1px solid var(--border-color); background-color:var(--bg-tertiary); cursor:pointer; outline:none; color:var(--text-primary); margin-top:-2px;">
-            ${state.days.map(d => `
-              <option value="${d.dayIndex}" ${d.dayIndex === currentChallengeDay ? 'selected' : ''}>Day ${d.dayIndex} (${d.date.substring(5)})</option>
-            `).join('')}
-          </select>
+          <div style="display:flex; align-items:center; gap:4px;">
+            <button class="btn btn-secondary btn-sm" id="header-prev-day-btn" style="padding: 2px 6px; font-size: 11px; height: 22px; display:flex; align-items:center; justify-content:center;">◀</button>
+            <input type="date" id="global-header-date-input" value="${activeDate}" style="font-family:var(--font-sans); font-weight:700; padding: 2px 8px; font-size:11px; height:22px; border-radius:4px; border:1px solid var(--border-color); background-color:var(--bg-tertiary); cursor:pointer; outline:none; color:var(--text-primary);">
+            <button class="btn btn-secondary btn-sm" id="header-next-day-btn" style="padding: 2px 6px; font-size: 11px; height: 22px; display:flex; align-items:center; justify-content:center;">▶</button>
+            <button class="btn btn-secondary btn-sm" id="header-today-btn" style="padding: 2px 8px; font-size: 11px; height: 22px; display:flex; align-items:center; justify-content:center; margin-left: 4px;">Today</button>
+          </div>
           <span class="header-subtitle" style="opacity: 0.6; margin-left: 4px;">— ${dateLabel}</span>
         </div>
         <h1 class="header-title">${viewTitles[state.currentView] || 'Aether Space'}</h1>
@@ -58,7 +59,7 @@ export function renderHeader(container, state) {
       </div>
       
       <div class="header-metric-item">
-        <span class="header-metric-val earnings-text" id="header-earnings-val">$0.00</span>
+        <span class="header-metric-val" id="header-earnings-val">$0.00</span>
         <span class="header-metric-lbl">Total Profit</span>
       </div>
       
@@ -92,7 +93,7 @@ export function renderHeader(container, state) {
   }
 
   // Calculate streak dynamically
-  const streak = calculateStreak(state.days);
+  const streak = calculateStreak(state.days, activeDate);
   const headerStreak = container.querySelector('#header-streak-val');
   if (headerStreak) {
     headerStreak.textContent = `${streak} day${streak === 1 ? '' : 's'}`;
@@ -109,73 +110,158 @@ export function renderHeader(container, state) {
     });
   }
 
-  // Attach global day selector change listener
-  const globalDaySelector = container.querySelector('#global-header-day-selector');
-  if (globalDaySelector) {
-    globalDaySelector.addEventListener('change', (e) => {
-      const dayIndex = parseInt(e.target.value);
-      state.setActiveDayIndex(dayIndex);
-
-      // If we are in Planner view, expand the newly selected day card
-      const targetDay = state.days.find(d => d.dayIndex === dayIndex);
-      if (targetDay) {
-        state.setExpandedDayDate(targetDay.date);
+  // Attach date picker listeners
+  const globalHeaderDateInput = container.querySelector('#global-header-date-input');
+  if (globalHeaderDateInput) {
+    globalHeaderDateInput.addEventListener('change', async (e) => {
+      const val = e.target.value;
+      if (val) {
+        await state.setActiveDate(val);
+        state.setExpandedDayDate(val);
       }
+    });
+  }
+
+  const prevBtn = container.querySelector('#header-prev-day-btn');
+  if (prevBtn) {
+    prevBtn.addEventListener('click', async () => {
+      const current = new Date(state.getActiveDate());
+      current.setDate(current.getDate() - 1);
+      const y = current.getFullYear();
+      const m = String(current.getMonth() + 1).padStart(2, '0');
+      const d = String(current.getDate()).padStart(2, '0');
+      const nextStr = `${y}-${m}-${d}`;
+      await state.setActiveDate(nextStr);
+      state.setExpandedDayDate(nextStr);
+    });
+  }
+
+  const nextBtn = container.querySelector('#header-next-day-btn');
+  if (nextBtn) {
+    nextBtn.addEventListener('click', async () => {
+      const current = new Date(state.getActiveDate());
+      current.setDate(current.getDate() + 1);
+      const y = current.getFullYear();
+      const m = String(current.getMonth() + 1).padStart(2, '0');
+      const d = String(current.getDate()).padStart(2, '0');
+      const nextStr = `${y}-${m}-${d}`;
+      await state.setActiveDate(nextStr);
+      state.setExpandedDayDate(nextStr);
+    });
+  }
+
+  const todayBtn = container.querySelector('#header-today-btn');
+  if (todayBtn) {
+    todayBtn.addEventListener('click', async () => {
+      const nextStr = state.getTodayDateStr();
+      await state.setActiveDate(nextStr);
+      state.setExpandedDayDate(nextStr);
     });
   }
 }
 
 // Custom streak calculation logic
-export function calculateStreak(days) {
-  let maxStreak = 0;
-  let currentStreak = 0;
+export function calculateStreak(days, activeDateStr) {
+  if (!activeDateStr) {
+    const today = new Date();
+    const y = today.getFullYear();
+    const m = String(today.getMonth() + 1).padStart(2, '0');
+    const d = String(today.getDate()).padStart(2, '0');
+    activeDateStr = `${y}-${m}-${d}`;
+  }
   
-  // Sort days by dayIndex
-  const sortedDays = [...days].sort((a, b) => a.dayIndex - b.dayIndex);
+  let streak = 0;
+  let checkDate = new Date(activeDateStr);
   
-  for (const day of sortedDays) {
-    // Check if user has interacted with this day
-    const hasInteracted = (day.schedule && day.schedule.some(t => t.status !== 'pending')) ||
-                          (day.satisfaction && day.satisfaction.score !== 5 && day.satisfaction.score !== null) ||
-                          (day.finance && (day.finance.revenue > 0 || day.finance.expenses > 0 || day.finance.savings > 0)) ||
-                          (day.notes && day.notes.trim() !== '');
+  // Sort days to check existence
+  const activeDay = days.find(d => d.date === activeDateStr);
+  const activeHasInteraction = activeDay && (
+    (activeDay.schedule && activeDay.schedule.some(t => t.status !== 'pending')) ||
+    (activeDay.satisfaction && activeDay.satisfaction.score !== 5 && activeDay.satisfaction.score !== null) ||
+    (activeDay.finance && (activeDay.finance.revenue > 0 || activeDay.finance.expenses > 0 || activeDay.finance.savings > 0)) ||
+    (activeDay.notes && activeDay.notes.trim() !== '')
+  );
+  
+  if (!activeHasInteraction) {
+    // Start checking from yesterday
+    checkDate.setDate(checkDate.getDate() - 1);
+  }
+  
+  // Walk back up to 365 days
+  for (let i = 0; i < 365; i++) {
+    const y = checkDate.getFullYear();
+    const m = String(checkDate.getMonth() + 1).padStart(2, '0');
+    const d = String(checkDate.getDate()).padStart(2, '0');
+    const curDateStr = `${y}-${m}-${d}`;
     
-    if (!hasInteracted) {
-      // It is a future day, stop counting
-      break;
-    }
-    
-    if (isDaySuccessful(day)) {
-      currentStreak++;
-      if (currentStreak > maxStreak) {
-        maxStreak = currentStreak;
-      }
+    const dayData = days.find(d => d.date === curDateStr);
+    if (dayData && isDaySuccessful(dayData)) {
+      streak++;
+      checkDate.setDate(checkDate.getDate() - 1);
     } else {
-      currentStreak = 0;
+      break;
     }
   }
   
-  return currentStreak; // Return current active streak
+  return streak;
+}
+
+export function calculateLongestStreak(days) {
+  if (days.length === 0) return 0;
+  
+  // Filter to logged days and sort chronologically
+  const loggedDays = days.filter(day => {
+    return (day.schedule && day.schedule.some(t => t.status !== 'pending')) ||
+           (day.satisfaction && day.satisfaction.score !== 5 && day.satisfaction.score !== null) ||
+           (day.finance && (day.finance.revenue > 0 || day.finance.expenses > 0 || day.finance.savings > 0)) ||
+           (day.notes && day.notes.trim() !== '');
+  }).sort((a, b) => a.date.localeCompare(b.date));
+  
+  if (loggedDays.length === 0) return 0;
+  
+  let maxStreak = 0;
+  let currentStreak = 0;
+  let lastDate = null;
+  
+  for (const day of loggedDays) {
+    if (!isDaySuccessful(day)) {
+      currentStreak = 0;
+      lastDate = null;
+      continue;
+    }
+    
+    if (lastDate === null) {
+      currentStreak = 1;
+    } else {
+      const diffTime = new Date(day.date) - new Date(lastDate);
+      const diffDays = Math.round(diffTime / (24 * 60 * 60 * 1000));
+      
+      if (diffDays === 1) {
+        currentStreak++;
+      } else if (diffDays > 1) {
+        currentStreak = 1;
+      }
+    }
+    
+    if (currentStreak > maxStreak) {
+      maxStreak = currentStreak;
+    }
+    lastDate = day.date;
+  }
+  
+  return maxStreak;
 }
 
 export function isDaySuccessful(day) {
-  // Criteria for a successful day:
-  // 1. Task completion rate >= 60%
   const totalTasks = day.schedule ? day.schedule.length : 0;
   const completedTasks = day.schedule ? day.schedule.filter(t => t.status === 'completed' || t.status === 'delayed').length : 0;
   const taskRate = totalTasks > 0 ? completedTasks / totalTasks : 0;
   
-  // 2. Satisfaction score >= 6
   const satisfaction = day.satisfaction ? day.satisfaction.score : null;
   
-  // 3. Non-negotiables: at least 3 completed if any non-negotiables are set
   const nonNegValues = day.nonNegotiables ? Object.values(day.nonNegotiables) : [];
   const completedNonNegs = nonNegValues.filter(v => v === 'done').length;
   
-  // Day is successful if:
-  // - There are tasks and completion rate >= 60% AND satisfaction >= 6
-  // - OR satisfaction is very high (>= 8)
-  // - OR completed non-negotiables >= 3
   if (totalTasks > 0 && taskRate >= 0.6 && (satisfaction === null || satisfaction >= 6)) return true;
   if (satisfaction !== null && satisfaction >= 8) return true;
   if (completedNonNegs >= 3) return true;

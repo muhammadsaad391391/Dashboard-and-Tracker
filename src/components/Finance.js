@@ -10,26 +10,48 @@ let chartProfitSav = null;
 let chartGrowth = null;
 
 export function renderFinance(container, state) {
-  // 1. Identify active day (to compute daily and weekly stats)
-  const currentChallengeDay = state.getActiveDayIndex();
-  const activeDay = state.days.find(d => d.dayIndex === currentChallengeDay);
-  const activeDayIndex = activeDay ? activeDay.dayIndex : 4;
+  const activeDate = state.getActiveDate();
+  const [activeYear, activeMonth, activeDayVal] = activeDate.split('-').map(Number);
+  
+  // 1. Identify Month boundaries and generate all days of the selected month
+  const firstDayOfMonth = new Date(activeYear, activeMonth - 1, 1);
+  const monthName = firstDayOfMonth.toLocaleDateString('en-US', { month: 'long' });
+  const totalDaysInMonth = new Date(activeYear, activeMonth, 0).getDate();
+
+  const monthDays = [];
+  for (let d = 1; d <= totalDaysInMonth; d++) {
+    const dateStr = `${activeYear}-${String(activeMonth).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+    let dayObj = state.days.find(day => day.date === dateStr);
+    if (!dayObj) {
+      dayObj = {
+        date: dateStr,
+        dayIndex: d,
+        label: `${monthName} ${d}, ${activeYear}`,
+        weekday: new Date(activeYear, activeMonth - 1, d).toLocaleDateString('en-US', { weekday: 'long' }),
+        schedule: [],
+        nonNegotiables: {},
+        satisfaction: { score: 5, successText: '', improvementText: '' },
+        finance: { revenue: 0, expenses: 0, savings: 0 },
+        notes: ''
+      };
+    }
+    monthDays.push(dayObj);
+  }
 
   // 2. Perform financial aggregations
+  // Sum ALL days in database for Year-End $10,000 target computations
   let totalRevenue = 0;
   let totalExpenses = 0;
-  let dailyProfit = 0;
-  let weeklyRevenue = 0;
-  let weeklyExpenses = 0;
-  
-  // Find which week the active day falls in
-  // Week 1: 1-7, Week 2: 8-14, Week 3: 15-21, Week 4: 22-28, Week 5: 29-30
-  let activeWeek = 1;
-  if (activeDayIndex >= 8 && activeDayIndex <= 14) activeWeek = 2;
-  else if (activeDayIndex >= 15 && activeDayIndex <= 21) activeWeek = 3;
-  else if (activeDayIndex >= 22 && activeDayIndex <= 28) activeWeek = 4;
-  else if (activeDayIndex >= 29) activeWeek = 5;
+  state.days.forEach(day => {
+    totalRevenue += day.finance?.revenue || 0;
+    totalExpenses += day.finance?.expenses || 0;
+  });
+  const totalProfit = totalRevenue - totalExpenses;
 
+  // Selected Month aggregations
+  let monthlyRevenue = 0;
+  let monthlyExpenses = 0;
+  
   const labels = [];
   const revenues = [];
   const expenses = [];
@@ -38,97 +60,106 @@ export function renderFinance(container, state) {
   
   let runningProfit = 0;
 
-  state.days.forEach(day => {
+  monthDays.forEach(day => {
     const rev = day.finance?.revenue || 0;
     const exp = day.finance?.expenses || 0;
     const profit = rev - exp;
 
-    // Globals
-    totalRevenue += rev;
-    totalExpenses += exp;
+    monthlyRevenue += rev;
+    monthlyExpenses += exp;
 
-    // Array trackers for charts
-    labels.push(`Day ${day.dayIndex}`);
+    labels.push(String(new Date(day.date).getDate()).padStart(2, '0'));
     revenues.push(rev);
     expenses.push(exp);
     profits.push(profit);
 
-    // Cumulative sums
     runningProfit += profit;
     cumProfits.push(runningProfit);
-
-    // Today/Active day specifically
-    if (day.dayIndex === activeDayIndex) {
-      dailyProfit = profit;
-    }
-
-    // Weekly aggregator
-    let dayWeek = 1;
-    if (day.dayIndex >= 8 && day.dayIndex <= 14) dayWeek = 2;
-    else if (day.dayIndex >= 15 && day.dayIndex <= 21) dayWeek = 3;
-    else if (day.dayIndex >= 22 && day.dayIndex <= 28) dayWeek = 4;
-    else if (day.dayIndex >= 29) dayWeek = 5;
-
-    if (dayWeek === activeWeek) {
-      weeklyRevenue += rev;
-      weeklyExpenses += exp;
-    }
   });
 
-  const totalProfit = totalRevenue - totalExpenses;
-  const weeklyProfit = weeklyRevenue - weeklyExpenses;
-  const avgDailyProfit = totalProfit / 30;
+  const monthlyProfit = monthlyRevenue - monthlyExpenses;
 
-  // $1k Net Profit Target Circle calculations
-  const targetGoal = 1000;
+  // 3. Dynamic target computations for $10,000 challenge till Dec 31
+  const targetGoal = 10000;
   const progressPct = Math.max(0, Math.min(100, Math.round((totalProfit / targetGoal) * 100)));
-  const progressOffset = 251.2 - (251.2 * progressPct) / 100;
-  const remainingGoal = targetGoal - totalProfit;
+  const remainingGoal = Math.max(0, targetGoal - totalProfit);
+
+  // Calculate days remaining to December 31
+  const today = new Date();
+  today.setHours(0,0,0,0);
+  const endOfYear = new Date(today.getFullYear(), 11, 31); // Dec 31
+  const diffTime = endOfYear - today;
+  // Calculate remaining calendar days including today
+  const remainingDays = Math.max(1, Math.ceil(diffTime / (1000 * 60 * 60 * 24)) + 1);
+
+  // Daily and monthly needed calculations
+  const dailyNeeded = remainingDays > 0 ? remainingGoal / remainingDays : 0;
+  const remainingMonths = remainingDays / 30.44; // Avg days in month
+  const monthlyNeeded = remainingMonths > 0 ? remainingGoal / remainingMonths : 0;
 
   // Render HTML structure
   container.innerHTML = `
-    <!-- Target Progress Card -->
-    <div class="card" style="display:flex; align-items:center; gap:32px; padding:24px; margin-bottom:24px; flex-wrap:wrap; background:linear-gradient(135deg, rgba(99,102,241,0.05) 0%, rgba(168,85,247,0.05) 100%); border: 1px solid var(--accent);">
-      <div style="position:relative; width:120px; height:120px; display:flex; align-items:center; justify-content:center; flex-shrink:0;">
-        <svg viewBox="0 0 100 100" style="width:120px; height:120px; transform: rotate(-90deg);">
-          <circle cx="50" cy="50" r="40" stroke="var(--border-color)" stroke-width="6" fill="transparent" />
-          <circle cx="50" cy="50" r="40" stroke="url(#progress-grad)" stroke-width="8" stroke-linecap="round" fill="transparent"
-            stroke-dasharray="251.2" stroke-dashoffset="${progressOffset}" style="transition: stroke-dashoffset 0.5s ease;" />
-          <defs>
-            <linearGradient id="progress-grad" x1="0%" y1="0%" x2="100%" y2="100%">
-              <stop offset="0%" stop-color="#6366f1" />
-              <stop offset="100%" stop-color="#a855f7" />
-            </linearGradient>
-          </defs>
-        </svg>
-        <div style="position:absolute; display:flex; flex-direction:column; align-items:center; justify-content:center; text-align:center;">
-          <span style="font-family:var(--font-header); font-size:24px; font-weight:800; color:var(--text-primary); line-height:1;">${progressPct}%</span>
-          <span style="font-size:10px; color:var(--text-secondary); margin-top:2px; text-transform:uppercase;">Goal</span>
-        </div>
+    <!-- Month Selector Bar -->
+    <div class="card" style="padding: 12px; margin-bottom: 20px; display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap;">
+      <div style="display: flex; align-items: center; gap: 12px; flex-wrap: wrap;">
+        <button class="btn btn-secondary btn-sm" id="finance-prev-month-btn">◀ Prev Month</button>
+        <span style="font-size: 14px; font-weight: 700; color: var(--text-primary); font-family: var(--font-header);" id="finance-month-label">${monthName} ${activeYear}</span>
+        <button class="btn btn-secondary btn-sm" id="finance-next-month-btn">Next Month ▶</button>
+        <button class="btn btn-secondary btn-sm" id="finance-current-month-btn" style="margin-left: 6px;">Current Month</button>
+      </div>
+    </div>
+
+    <!-- Target Progress Card (Horizontal Completion Bar and Daily/Monthly breakdown) -->
+    <div class="card" style="display:flex; flex-direction:column; gap:16px; padding:24px; margin-bottom:24px; background:linear-gradient(135deg, rgba(99,102,241,0.04) 0%, rgba(168,85,247,0.04) 100%); border: 1px solid var(--accent);">
+      <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:12px;">
+        <h2 style="font-size: 20px; font-weight: 800; margin: 0; background:var(--accent-gradient); -webkit-background-clip:text; -webkit-text-fill-color:transparent; font-family:var(--font-header);">
+          $10,000 Year-End Net Profit Challenge
+        </h2>
+        <span style="font-family:var(--font-mono); font-size:11px; color:var(--text-muted); text-transform:uppercase; letter-spacing:0.05em;">Target End: Dec 31, ${activeYear}</span>
       </div>
       
-      <div style="flex:1; display:flex; flex-direction:column; gap:8px;">
-        <h2 style="font-size: 20px; font-weight: 800; margin: 0; background:var(--accent-gradient); -webkit-background-clip:text; -webkit-text-fill-color:transparent;">
-          $1,000 Net Profit Target
-        </h2>
-        <p style="font-size:13px; color:var(--text-secondary); margin:0; line-height:1.4;">
-          Your target for this 30-day challenge is to accumulate **$1,000.00** in net profit. Update your daily logs in the table below to track your progress!
-        </p>
-        <div style="display:flex; gap:24px; margin-top:4px;">
-          <div>
-            <div style="font-size:11px; color:var(--text-muted); text-transform:uppercase; letter-spacing:0.05em;">Current Profit</div>
-            <div style="font-size:18px; font-weight:700; color:${totalProfit >= 0 ? 'var(--success)' : 'var(--danger)'}; font-family:var(--font-mono);">$${totalProfit.toLocaleString('en-US', { minimumFractionDigits: 2 })}</div>
-          </div>
-          <div>
-            <div style="font-size:11px; color:var(--text-muted); text-transform:uppercase; letter-spacing:0.05em;">Target Goal</div>
-            <div style="font-size:18px; font-weight:700; color:var(--text-primary); font-family:var(--font-mono);">$1,000.00</div>
-          </div>
-          <div>
-            <div style="font-size:11px; color:var(--text-muted); text-transform:uppercase; letter-spacing:0.05em;">Remaining</div>
-            <div style="font-size:18px; font-weight:700; color:${remainingGoal <= 0 ? 'var(--success)' : 'var(--text-secondary)'}; font-family:var(--font-mono);">
-              $${Math.max(0, remainingGoal).toLocaleString('en-US', { minimumFractionDigits: 2 })}
-            </div>
-          </div>
+      <p style="font-size:13px; color:var(--text-secondary); margin:0; line-height:1.4;">
+        Your challenge target is to accumulate **$10,000.00** in total net profit by the end of the year. Fill daily revenue and expenses below to track progress.
+      </p>
+
+      <!-- Horizontal Progress Bar for Completion Rate -->
+      <div style="display:flex; flex-direction:column; gap:6px; margin-top:4px;">
+        <div style="display:flex; justify-content:space-between; font-size:12px; font-weight:700;">
+          <span style="color:var(--text-secondary);">Target Completion Rate:</span>
+          <span style="color:var(--accent-light); font-family:var(--font-mono);">${progressPct}%</span>
+        </div>
+        <div style="width:100%; height:12px; background-color:var(--bg-tertiary); border:1px solid var(--border-color); border-radius:6px; overflow:hidden;">
+          <div style="width:${progressPct}%; height:100%; background:var(--accent-gradient); border-radius:6px; transition:width 0.5s ease; box-shadow:0 0 10px rgba(99,102,241,0.5);"></div>
+        </div>
+      </div>
+
+      <!-- Financial Metrics Breakdown -->
+      <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap:16px; margin-top:8px; padding-top:16px; border-top:1px solid var(--border-color);">
+        <div>
+          <div style="font-size:11px; color:var(--text-muted); text-transform:uppercase; letter-spacing:0.05em;">Current Net Profit</div>
+          <div style="font-size:18px; font-weight:700; color:${totalProfit >= 0 ? 'var(--success)' : 'var(--danger)'}; font-family:var(--font-mono);">$${totalProfit.toLocaleString('en-US', { minimumFractionDigits: 2 })}</div>
+        </div>
+        <div>
+          <div style="font-size:11px; color:var(--text-muted); text-transform:uppercase; letter-spacing:0.05em;">Remaining to Target</div>
+          <div style="font-size:18px; font-weight:700; color:var(--text-secondary); font-family:var(--font-mono);">$${remainingGoal.toLocaleString('en-US', { minimumFractionDigits: 2 })}</div>
+        </div>
+        <div>
+          <div style="font-size:11px; color:var(--text-muted); text-transform:uppercase; letter-spacing:0.05em;">Days Remaining</div>
+          <div style="font-size:18px; font-weight:700; color:var(--warning); font-family:var(--font-mono);">${remainingDays} Days</div>
+        </div>
+      </div>
+
+      <!-- Required daily / monthly velocity alert blocks -->
+      <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap:16px; padding:14px 18px; background-color:rgba(255,255,255,0.015); border:1px solid var(--border-color); border-radius:var(--radius-sm); margin-top:4px;">
+        <div>
+          <span style="font-size:12px; color:var(--text-secondary); font-weight:600;">Daily Needed:</span>
+          <span style="font-size:16px; font-weight:700; color:var(--accent-light); font-family:var(--font-mono); margin-left:6px;">$${dailyNeeded.toFixed(2)}</span>
+          <div style="font-size:10px; color:var(--text-muted); margin-top:2px;">Needed every day to hit target</div>
+        </div>
+        <div style="padding-left:0px; border-top:1px solid var(--border-color); padding-top:12px; margin-top:0px;" class="mobile-border-fix">
+          <span style="font-size:12px; color:var(--text-secondary); font-weight:600;">Monthly Needed:</span>
+          <span style="font-size:16px; font-weight:700; color:var(--accent-light); font-family:var(--font-mono); margin-left:6px;">$${monthlyNeeded.toFixed(2)}</span>
+          <div style="font-size:10px; color:var(--text-muted); margin-top:2px;">Needed every month to hit target</div>
         </div>
       </div>
     </div>
@@ -137,71 +168,42 @@ export function renderFinance(container, state) {
     <div class="dashboard-grid" style="grid-template-columns: repeat(3, 1fr);">
       <div class="stat-card earnings">
         <span class="stat-icon">${icons.finance}</span>
-        <span class="stat-label">Total Revenue</span>
-        <span class="stat-value">$${totalRevenue.toLocaleString('en-US', { minimumFractionDigits: 2 })}</span>
-        <span class="stat-desc">Accumulated challenge revenue</span>
+        <span class="stat-label">Month Revenue</span>
+        <span class="stat-value">$${monthlyRevenue.toLocaleString('en-US', { minimumFractionDigits: 2 })}</span>
+        <span class="stat-desc">Accumulated ${monthName} revenue</span>
       </div>
 
       <div class="stat-card danger">
         <span class="stat-icon">${icons.finance}</span>
-        <span class="stat-label">Total Expenses</span>
-        <span class="stat-value" style="color:var(--danger)">$${totalExpenses.toLocaleString('en-US', { minimumFractionDigits: 2 })}</span>
-        <span class="stat-desc">Accumulated challenge expenses</span>
+        <span class="stat-label">Month Expenses</span>
+        <span class="stat-value" style="color:var(--danger)">$${monthlyExpenses.toLocaleString('en-US', { minimumFractionDigits: 2 })}</span>
+        <span class="stat-desc">Accumulated ${monthName} expenses</span>
       </div>
 
       <div class="stat-card success">
         <span class="stat-icon">${icons.finance}</span>
-        <span class="stat-label">Net Profit</span>
-        <span class="stat-value" style="color: ${totalProfit >= 0 ? 'var(--success)' : 'var(--danger)'}">
-          $${totalProfit.toLocaleString('en-US', { minimumFractionDigits: 2 })}
+        <span class="stat-label">Month Net Profit</span>
+        <span class="stat-value" style="color: ${monthlyProfit >= 0 ? 'var(--success)' : 'var(--danger)'}">
+          $${monthlyProfit.toLocaleString('en-US', { minimumFractionDigits: 2 })}
         </span>
-        <span class="stat-desc">Revenue minus expenses</span>
-      </div>
-    </div>
-
-    <!-- Secondary Tracker section showing breakdown -->
-    <div class="section-title" style="font-size:18px; margin-bottom:16px;">
-      Financial Breakdown (Focused on Day ${activeDayIndex})
-    </div>
-    
-    <div class="dashboard-grid" style="grid-template-columns: repeat(3, 1fr); margin-bottom: 32px;">
-      <div class="stat-card">
-        <span class="stat-label">Daily Earnings</span>
-        <span class="stat-value" style="font-size: 22px; color: ${dailyProfit >= 0 ? 'var(--success)' : 'var(--danger)'}">
-          $${dailyProfit.toFixed(2)}
-        </span>
-        <span class="stat-desc">Today's Net Profit</span>
-      </div>
-      <div class="stat-card">
-        <span class="stat-label">Weekly Earnings</span>
-        <span class="stat-value" style="font-size: 22px; color: ${weeklyProfit >= 0 ? 'var(--success)' : 'var(--danger)'}">
-          $${weeklyProfit.toFixed(2)}
-        </span>
-        <span class="stat-desc">Week ${activeWeek} Net Profit</span>
-      </div>
-      <div class="stat-card">
-        <span class="stat-label">Avg Daily Profit</span>
-        <span class="stat-value" style="font-size: 22px; color: var(--accent-light)">
-          $${avgDailyProfit.toFixed(2)}
-        </span>
-        <span class="stat-desc">Total Net Profit / 30 Days</span>
+        <span class="stat-desc">Month revenue minus expenses</span>
       </div>
     </div>
 
     <!-- Premium Interactive Charts -->
     <div class="charts-grid">
       <div class="chart-wrapper">
-        <div class="card-title">Revenue vs Expenses (Daily)</div>
+        <div class="card-title">${monthName} Revenue vs Expenses</div>
         <canvas id="chart-rev-exp"></canvas>
       </div>
 
       <div class="chart-wrapper">
-        <div class="card-title">Net Profit Trend</div>
+        <div class="card-title">${monthName} Net Profit Trend</div>
         <canvas id="chart-profit-sav"></canvas>
       </div>
 
       <div class="chart-wrapper" style="grid-column: span 2;">
-        <div class="card-title">Cumulative Net Profit Curve</div>
+        <div class="card-title">${monthName} Cumulative Net Profit Curve</div>
         <canvas id="chart-growth"></canvas>
       </div>
     </div>
@@ -209,8 +211,8 @@ export function renderFinance(container, state) {
     <!-- Daily Financial Logs Spreadsheet -->
     <div class="card" style="margin-top: 32px;">
       <div class="card-title" style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px;">
-        <span>Daily Financial Logs</span>
-        <span style="font-size: 11px; font-weight:normal; color:var(--text-secondary);">💡 Click inside any input box to edit. Press Enter or click away to save and update calculations automatically.</span>
+        <span>Daily Financial Logs: ${monthName} ${activeYear}</span>
+        <span style="font-size: 11px; font-weight:normal; color:var(--text-secondary);">💡 Click inside any input box to edit. Press Enter or click away to save.</span>
       </div>
       <div class="spreadsheet-container" style="max-height: 400px; overflow-y: auto; border:1px solid var(--border-color); border-radius:var(--radius-md);">
         <table class="spreadsheet-table" style="width: 100%; border-collapse: separate; border-spacing: 0;">
@@ -224,15 +226,18 @@ export function renderFinance(container, state) {
             </tr>
           </thead>
           <tbody>
-            ${state.days.map(day => {
+            ${monthDays.map(day => {
               const rev = day.finance?.revenue || 0;
               const exp = day.finance?.expenses || 0;
               const profit = rev - exp;
+              const dateObj = new Date(day.date);
+              const formattedDate = dateObj.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+              const isSelectedDay = day.date === activeDate;
               
               return `
-                <tr>
-                  <td class="spreadsheet-td sticky-col" style="text-align:center; font-weight:700;">Day ${day.dayIndex}</td>
-                  <td class="spreadsheet-td" style="text-align:center; font-family:var(--font-mono); font-size:12px; color:var(--text-secondary);">${day.date.substring(5)}</td>
+                <tr style="${isSelectedDay ? 'background-color: rgba(99, 102, 241, 0.05);' : ''}">
+                  <td class="spreadsheet-td sticky-col" style="text-align:center; font-weight:700; ${isSelectedDay ? 'background-color: var(--bg-tertiary);' : ''}">${day.dayIndex}</td>
+                  <td class="spreadsheet-td" style="text-align:center; font-family:var(--font-mono); font-size:12px; color:var(--text-secondary);">${formattedDate}</td>
                   <td class="spreadsheet-td" style="text-align:right;">
                     <input type="number" class="premium-input daily-fin-input" data-date="${day.date}" data-field="revenue" value="${rev}" step="any" style="width: 100px; text-align:right; font-family:var(--font-mono); font-weight:600; padding: 4px 8px; font-size: 13px; border-radius: var(--radius-sm); border: 1px solid var(--border-color); background-color: var(--bg-secondary); color: var(--text-primary);">
                   </td>
@@ -251,12 +256,27 @@ export function renderFinance(container, state) {
     </div>
   `;
 
-  // 3. Render charts inside requestAnimationFrame or setTimeout
+  // Apply responsive CSS border fix styling
+  const styleEl = document.createElement('style');
+  styleEl.innerHTML = `
+    @media (min-width: 600px) {
+      .mobile-border-fix {
+        border-left: 1px solid var(--border-color) !important;
+        padding-left: 16px !important;
+        border-top: none !important;
+        padding-top: 0 !important;
+        margin-top: 0 !important;
+      }
+    }
+  `;
+  container.appendChild(styleEl);
+
+  // 4. Render charts
   setTimeout(() => {
     initCharts(labels, revenues, expenses, profits, cumProfits, state.theme);
   }, 50);
 
-  // 4. Attach input change event handlers to save modifications instantly
+  // 5. Attach input change event handlers to save modifications instantly
   container.querySelectorAll('.daily-fin-input').forEach(input => {
     input.addEventListener('change', async (e) => {
       const date = input.getAttribute('data-date');
@@ -264,26 +284,46 @@ export function renderFinance(container, state) {
       const val = Math.max(0, parseFloat(input.value) || 0);
 
       const day = state.days.find(d => d.date === date);
-      if (day) {
-        day.finance = day.finance || { revenue: 0, expenses: 0, savings: 0 };
-        day.finance[field] = val;
-
-        await state.updateDay(date, { finance: day.finance });
-        
-        // Re-render the Finance board to update cards and charts dynamically!
-        renderFinance(container, state);
+      const updates = { finance: { revenue: 0, expenses: 0, savings: 0 } };
+      if (day && day.finance) {
+        updates.finance = { ...day.finance };
       }
+      updates.finance[field] = val;
+
+      await state.updateDay(date, updates);
+      
+      // Re-render the Finance board
+      renderFinance(container, state);
     });
+  });
+
+  // 6. Attach Month Navigation listeners
+  container.querySelector('#finance-prev-month-btn').addEventListener('click', async () => {
+    const d = new Date(activeYear, activeMonth - 2, 15);
+    const yStr = d.getFullYear();
+    const mStr = String(d.getMonth() + 1).padStart(2, '0');
+    const dStr = String(d.getDate()).padStart(2, '0');
+    await state.setActiveDate(`${yStr}-${mStr}-${dStr}`);
+  });
+
+  container.querySelector('#finance-next-month-btn').addEventListener('click', async () => {
+    const d = new Date(activeYear, activeMonth, 15);
+    const yStr = d.getFullYear();
+    const mStr = String(d.getMonth() + 1).padStart(2, '0');
+    const dStr = String(d.getDate()).padStart(2, '0');
+    await state.setActiveDate(`${yStr}-${mStr}-${dStr}`);
+  });
+
+  container.querySelector('#finance-current-month-btn').addEventListener('click', async () => {
+    await state.setActiveDate(state.getTodayDateStr());
   });
 }
 
 function initCharts(labels, revenues, expenses, profits, cumProfits, theme) {
-  // Theme options
   const isDark = theme === 'dark';
   const gridColor = isDark ? 'rgba(255, 255, 255, 0.05)' : 'rgba(0, 0, 0, 0.05)';
   const textColor = isDark ? '#a1a1aa' : '#475569';
 
-  // Helper chart configurations
   const commonOptions = {
     responsive: true,
     maintainAspectRatio: false,
@@ -312,7 +352,6 @@ function initCharts(labels, revenues, expenses, profits, cumProfits, theme) {
     }
   };
 
-  // Destroy existing charts to prevent memory leak / duplicate renders
   if (chartRevExp) chartRevExp.destroy();
   if (chartProfitSav) chartProfitSav.destroy();
   if (chartGrowth) chartGrowth.destroy();
@@ -369,8 +408,6 @@ function initCharts(labels, revenues, expenses, profits, cumProfits, theme) {
 
   // Chart 3: Cumulative Net Profit Curve (Line Chart with Area fill)
   const ctxGrowth = document.getElementById('chart-growth').getContext('2d');
-  
-  // Custom Gradient for fill
   const gradProfit = ctxGrowth.createLinearGradient(0, 0, 0, 300);
   gradProfit.addColorStop(0, 'rgba(99, 102, 241, 0.2)');
   gradProfit.addColorStop(1, 'rgba(99, 102, 241, 0)');

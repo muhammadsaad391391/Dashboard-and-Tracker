@@ -8,10 +8,16 @@ export function renderStudy(container, state) {
     savedScrollLeft = oldSpreadsheet.scrollLeft;
   }
 
+  const weekDays = state.getDaysForActiveWeek();
+  const startLabel = weekDays[0] ? weekDays[0].label.replace(/, \d{4}/, '') : '';
+  const endLabel = weekDays[6] ? weekDays[6].label.replace(/, \d{4}/, '') : '';
+  const year = weekDays[0] ? new Date(weekDays[0].date).getFullYear() : '';
+  const weekRangeText = `${startLabel} – ${endLabel}, ${year}`;
+
   // Build spreadsheet grid headers
-  const headerHtml = state.days.map(day => `
+  const headerHtml = weekDays.map(day => `
     <th class="spreadsheet-th" id="study-header-${day.date}">
-      <div style="font-size: 13px; font-weight:700;">Day ${day.dayIndex}</div>
+      <div style="font-size: 13px; font-weight:700;">${day.weekday.substring(0, 3)}</div>
       <div style="font-size: 10px; opacity:0.7;">${day.date.substring(5)}</div>
     </th>
   `).join('');
@@ -22,7 +28,7 @@ export function renderStudy(container, state) {
     rowsHtml += `<tr>`;
     rowsHtml += `<td class="spreadsheet-td sticky-col">${slot}</td>`;
     
-    state.days.forEach((day, colIdx) => {
+    weekDays.forEach((day, colIdx) => {
       // Find tasks matching this time slot and type === 'study'
       const task = day.schedule.find(t => t.plannedTime === slot && t.type === 'study');
       
@@ -93,13 +99,11 @@ export function renderStudy(container, state) {
 
     <!-- Quick navigation bar for weeks -->
     <div class="card" style="padding: 12px; margin-bottom: 20px; display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap;">
-      <div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
-        <span style="font-size: 13px; font-weight: 600; color: var(--text-secondary);">Quick Jump:</span>
-        <div style="display: flex; gap: 6px;">
-          <button class="btn btn-secondary btn-sm jump-week-btn" data-start="1">Week 1</button>
-          <button class="btn btn-secondary btn-sm jump-week-btn" data-start="8">Week 2</button>
-          <button class="btn btn-secondary btn-sm jump-week-btn" data-start="15">Week 3</button>
-        </div>
+      <div style="display: flex; align-items: center; gap: 12px; flex-wrap: wrap;">
+        <button class="btn btn-secondary btn-sm" id="study-prev-week-btn">◀ Prev Week</button>
+        <span style="font-size: 13px; font-weight: 700; color: var(--text-primary); font-family: var(--font-header);" id="study-week-range">${weekRangeText}</span>
+        <button class="btn btn-secondary btn-sm" id="study-next-week-btn">Next Week ▶</button>
+        <button class="btn btn-secondary btn-sm" id="study-today-btn" style="margin-left: 6px;">Today</button>
       </div>
       <div style="display: flex; gap: 6px;" id="grid-scroll-controls">
         <button class="btn btn-secondary btn-sm scroll-grid-btn" data-dir="left">◀ Scroll Left</button>
@@ -146,21 +150,27 @@ export function renderStudy(container, state) {
     });
   });
 
-  // Week Jump Buttons
-  container.querySelectorAll('.jump-week-btn').forEach(btn => {
-    btn.addEventListener('click', () => {
-      const startIndex = parseInt(btn.getAttribute('data-start'));
-      const targetDay = state.days.find(d => d.dayIndex === startIndex);
-      if (!targetDay) return;
+  // Week Navigation Listeners
+  container.querySelector('#study-prev-week-btn').addEventListener('click', async () => {
+    const current = new Date(state.getActiveDate());
+    current.setDate(current.getDate() - 7);
+    const y = current.getFullYear();
+    const m = String(current.getMonth() + 1).padStart(2, '0');
+    const d = String(current.getDate()).padStart(2, '0');
+    await state.setActiveDate(`${y}-${m}-${d}`);
+  });
 
-      const spreadsheetContainer = container.querySelector('.spreadsheet-container');
-      const activeHeader = container.querySelector(`[id="study-header-${targetDay.date}"]`);
-      if (spreadsheetContainer && activeHeader) {
-        const offsetLeft = activeHeader.offsetLeft;
-        const containerWidth = spreadsheetContainer.clientWidth;
-        spreadsheetContainer.scrollLeft = offsetLeft - (containerWidth / 2) + (activeHeader.clientWidth / 2);
-      }
-    });
+  container.querySelector('#study-next-week-btn').addEventListener('click', async () => {
+    const current = new Date(state.getActiveDate());
+    current.setDate(current.getDate() + 7);
+    const y = current.getFullYear();
+    const m = String(current.getMonth() + 1).padStart(2, '0');
+    const d = String(current.getDate()).padStart(2, '0');
+    await state.setActiveDate(`${y}-${m}-${d}`);
+  });
+
+  container.querySelector('#study-today-btn').addEventListener('click', async () => {
+    await state.setActiveDate(state.getTodayDateStr());
   });
 
   // Restore scroll position or perform initial focus day scroll
@@ -170,10 +180,8 @@ export function renderStudy(container, state) {
       spreadsheetContainer.scrollLeft = savedScrollLeft;
     } else if (state.studyScrollNeedsInit) {
       setTimeout(() => {
-        const focusDayIndex = state.getActiveDayIndex();
-        const focusDay = state.days.find(d => d.dayIndex === focusDayIndex);
-        const targetHeaderId = focusDay ? `study-header-${focusDay.date}` : '';
-        const activeHeader = targetHeaderId ? container.querySelector(`[id="${targetHeaderId}"]`) : container.querySelector(`.spreadsheet-th:nth-child(5)`);
+        const activeDate = state.getActiveDate();
+        const activeHeader = container.querySelector(`[id="study-header-${activeDate}"]`);
         if (spreadsheetContainer && activeHeader) {
           const offsetLeft = activeHeader.offsetLeft;
           const containerWidth = spreadsheetContainer.clientWidth;

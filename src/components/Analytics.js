@@ -1,6 +1,6 @@
 import { Chart, RadarController, RadialLinearScale, PointElement, LineElement, Filler, Tooltip, Legend } from 'chart.js';
 import { icons } from '../icons.js';
-import { calculateStreak } from './Header.js';
+import { calculateStreak, calculateLongestStreak } from './Header.js';
 
 Chart.register(RadarController, RadialLinearScale, PointElement, LineElement, Filler, Tooltip, Legend);
 
@@ -90,30 +90,15 @@ export function renderAnalytics(container, state) {
     const perfScore = Math.round((schedRate * 50) + (nnRate * 30) + (satVal * 2));
 
     if (perfScore > bestDay.score) {
-      bestDay = { label: `Day ${day.dayIndex} (${day.date.substring(5)})`, score: perfScore };
+      bestDay = { label: day.label, score: perfScore };
     }
     if (perfScore < worstDay.score && perfScore >= 0) {
-      worstDay = { label: `Day ${day.dayIndex} (${day.date.substring(5)})`, score: perfScore };
+      worstDay = { label: day.label, score: perfScore };
     }
   });
 
   // Streaks
-  let longestStreak = 0;
-  let currentStreak = 0;
-  state.days.forEach(day => {
-    // We compute consecutive successful days
-    const isSuccess = isDaySuccessfulForStreak(day, state.nonNegotiables.length);
-    if (isSuccess) {
-      currentStreak++;
-      if (currentStreak > longestStreak) longestStreak = currentStreak;
-    } else {
-      const hasInteracted = (day.schedule && day.schedule.some(t => t.status !== 'pending')) ||
-                            (day.satisfaction && day.satisfaction.score !== 5 && day.satisfaction.score !== null);
-      if (hasInteracted) {
-        currentStreak = 0;
-      }
-    }
-  });
+  const longestStreak = calculateLongestStreak(state.days);
 
   // Calculate most completed task
   let mostCompletedTask = "None yet";
@@ -198,7 +183,7 @@ export function renderAnalytics(container, state) {
 
       <div class="stat-card">
         <span class="stat-label">Total Days Active</span>
-        <span class="stat-value">${interactedDaysCount} / 21</span>
+        <span class="stat-value">${interactedDaysCount} Days</span>
         <span class="stat-desc">Days with logged activity</span>
       </div>
     </div>
@@ -216,10 +201,10 @@ export function renderAnalytics(container, state) {
         <div class="task-list">
           ${state.days.filter(d => d.notes && d.notes.trim() !== '').length === 0 ? `
             <div class="cell-empty" style="padding: 60px 0;">No personal notes logged yet. Use the Daily Planner to write daily journals!</div>
-          ` : state.days.filter(d => d.notes && d.notes.trim() !== '').map(day => `
+          ` : [...state.days].filter(d => d.notes && d.notes.trim() !== '').sort((a,b) => b.date.localeCompare(a.date)).map(day => `
             <div class="task-row" style="flex-direction: column; align-items: flex-start; gap: 6px; padding: 14px;">
               <div style="display:flex; justify-content:space-between; width:100%; font-size:12px; font-weight:700;">
-                <span>Day ${day.dayIndex} — ${day.label}</span>
+                <span>${day.label}</span>
                 <span style="color: var(--warning)">★ ${day.satisfaction?.score || 'N/A'}/10</span>
               </div>
               <div style="font-size: 13px; color: var(--text-secondary); line-height: 1.4;">

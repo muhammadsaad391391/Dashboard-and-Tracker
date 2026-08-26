@@ -20,23 +20,113 @@ class AppState {
     this.selectionAnchor = null;
   }
 
-  // Get current active day index (either user-selected or auto-calculated based on date)
-  getActiveDayIndex() {
-    if (this.activeDayIndex !== null && this.activeDayIndex !== undefined) {
-      return this.activeDayIndex;
-    }
-    const startDate = new Date(2026, 5, 22);
-    const today = new Date();
-    const diffTime = today - startDate;
-    const diffDays = Math.floor(diffTime / (24 * 60 * 60 * 1000)) + 1;
-    return (diffDays >= 1 && diffDays <= 21) ? diffDays : 1; // Default to Day 1 if outside range
+  getTodayDateStr() {
+    const d = new Date();
+    const year = d.getFullYear();
+    const month = String(d.getMonth() + 1).padStart(2, '0');
+    const day = String(d.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
   }
 
-  // Set the active day index and save it to settings
-  async setActiveDayIndex(index) {
-    this.activeDayIndex = parseInt(index);
-    await db.settings.put({ key: 'active_day_index', value: this.activeDayIndex });
+  getActiveDate() {
+    return this.activeDate || this.getTodayDateStr();
+  }
+
+  async setActiveDate(dateStr) {
+    this.activeDate = dateStr;
+    await this.ensureActiveWeekExists(dateStr);
+    await db.settings.put({ key: 'active_date', value: this.activeDate });
     this.notify();
+  }
+
+  getActiveDayIndex() {
+    const active = this.getActiveDate();
+    const [year, month, day] = active.split('-').map(Number);
+    const date = new Date(year, month - 1, day);
+    const dayOfWeek = date.getDay();
+    return dayOfWeek === 0 ? 7 : dayOfWeek;
+  }
+
+  async setActiveDayIndex(index) {
+    // Retained for compatibility. Map index (1-7) to corresponding date in active week
+    const weekDays = this.getDaysForActiveWeek();
+    const dayObj = weekDays[index - 1];
+    if (dayObj) {
+      await this.setActiveDate(dayObj.date);
+    }
+  }
+
+  getDaysForActiveWeek() {
+    const active = this.getActiveDate();
+    const [year, month, day] = active.split('-').map(Number);
+    const date = new Date(year, month - 1, day);
+    const dayOfWeek = date.getDay();
+    const diffToMonday = dayOfWeek === 0 ? -6 : 1 - dayOfWeek;
+    const monday = new Date(date);
+    monday.setDate(date.getDate() + diffToMonday);
+    
+    const weekDates = [];
+    for (let i = 0; i < 7; i++) {
+      const d = new Date(monday);
+      d.setDate(monday.getDate() + i);
+      const y = d.getFullYear();
+      const m = String(d.getMonth() + 1).padStart(2, '0');
+      const da = String(d.getDate()).padStart(2, '0');
+      weekDates.push(`${y}-${m}-${da}`);
+    }
+    
+    return weekDates.map(dateStr => {
+      return this.days.find(d => d.date === dateStr);
+    }).filter(Boolean);
+  }
+
+  async ensureActiveWeekExists(dateStr) {
+    const [year, month, day] = dateStr.split('-').map(Number);
+    const date = new Date(year, month - 1, day);
+    const dayOfWeek = date.getDay();
+    const diffToMonday = dayOfWeek === 0 ? -6 : 1 - dayOfWeek;
+    const monday = new Date(date);
+    monday.setDate(date.getDate() + diffToMonday);
+    
+    const weekDates = [];
+    for (let i = 0; i < 7; i++) {
+      const d = new Date(monday);
+      d.setDate(monday.getDate() + i);
+      const y = d.getFullYear();
+      const m = String(d.getMonth() + 1).padStart(2, '0');
+      const da = String(d.getDate()).padStart(2, '0');
+      weekDates.push({
+        dateStr: `${y}-${m}-${da}`,
+        label: d.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' }),
+        weekday: d.toLocaleDateString('en-US', { weekday: 'long' }),
+        dayIndex: i + 1
+      });
+    }
+    
+    let dbChanged = false;
+    for (const wd of weekDates) {
+      let dayObj = this.days.find(d => d.date === wd.dateStr);
+      if (!dayObj) {
+        dayObj = {
+          date: wd.dateStr,
+          dayIndex: wd.dayIndex,
+          label: wd.label,
+          weekday: wd.weekday,
+          schedule: [],
+          nonNegotiables: {},
+          satisfaction: { score: 5, successText: '', improvementText: '' },
+          finance: { revenue: 0, expenses: 0, savings: 0 },
+          notes: ''
+        };
+        await db.days.put(JSON.parse(JSON.stringify(dayObj)));
+        this.days.push(dayObj);
+        dbChanged = true;
+      }
+    }
+    
+    if (dbChanged) {
+      this.days = await db.days.toArray();
+    }
   }
 
   // Set active expanded day in list view
@@ -100,9 +190,10 @@ class AppState {
     const viewSetting = await db.settings.get('current_view');
     this.currentView = viewSetting ? viewSetting.value : 'dashboard';
 
-    // Load active day setting
-    const activeDaySetting = await db.settings.get('active_day_index');
-    this.activeDayIndex = activeDaySetting ? activeDaySetting.value : null;
+    // Load active date setting
+    const activeDateSetting = await db.settings.get('active_date');
+    this.activeDate = activeDateSetting ? activeDateSetting.value : this.getTodayDateStr();
+    await this.ensureActiveWeekExists(this.activeDate);
 
     // Set initial sidebar collapse status for wide views
     const view = this.currentView;
@@ -115,19 +206,9 @@ class AppState {
 
   // Fetch lists directly from IndexedDB
   async fetchData() {
-    this.days = await db.days.orderBy('dayIndex').toArray();
-
-    // Trim days database to 21 days if it was previously 30 days
-    if (this.days.length > 21) {
-      this.days = this.days.slice(0, 21);
-      const datesToDelete = [];
-      await db.days.where('dayIndex').above(21).each(day => {
-        datesToDelete.push(day.date);
-      });
-      if (datesToDelete.length > 0) {
-        await db.days.bulkDelete(datesToDelete);
-      }
-    }
+    this.days = await db.days.toArray();
+    // Sort days chronologically by date string
+    this.days.sort((a, b) => a.date.localeCompare(b.date));
 
     this.nonNegotiables = await db.nonNegotiables.toArray();
     this.nonNegotiables.sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
@@ -213,17 +294,36 @@ class AppState {
 
   // Update a specific day's records
   async updateDay(date, updates) {
-    const dayIndex = this.days.findIndex(d => d.date === date);
-    if (dayIndex === -1) return;
-
-    // Deep merge changes into memory representation
-    this.days[dayIndex] = {
-      ...this.days[dayIndex],
-      ...updates
-    };
-
-    // Save to IndexedDB
-    await db.days.put(JSON.parse(JSON.stringify(this.days[dayIndex])));
+    let dayIndex = this.days.findIndex(d => d.date === date);
+    if (dayIndex === -1) {
+      const [year, month, day] = date.split('-').map(Number);
+      const d = new Date(year, month - 1, day);
+      const formattedWeekday = d.toLocaleDateString('en-US', { weekday: 'long' });
+      const formattedLabel = d.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' });
+      const newDay = {
+        date: date,
+        dayIndex: d.getDay() === 0 ? 7 : d.getDay(),
+        label: formattedLabel,
+        weekday: formattedWeekday,
+        schedule: [],
+        nonNegotiables: {},
+        satisfaction: { score: 5, successText: '', improvementText: '' },
+        finance: { revenue: 0, expenses: 0, savings: 0 },
+        notes: '',
+        ...updates
+      };
+      this.days.push(newDay);
+      this.days.sort((a, b) => a.date.localeCompare(b.date));
+      await db.days.put(JSON.parse(JSON.stringify(newDay)));
+    } else {
+      // Deep merge changes into memory representation
+      this.days[dayIndex] = {
+        ...this.days[dayIndex],
+        ...updates
+      };
+      // Save to IndexedDB
+      await db.days.put(JSON.parse(JSON.stringify(this.days[dayIndex])));
+    }
     this.notify();
   }
 
