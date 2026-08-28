@@ -353,10 +353,18 @@ export function renderSettings(container, state) {
 
   if (genSyncCodeBtn && syncCodeInput) {
     genSyncCodeBtn.addEventListener('click', async () => {
-      const randCode = 'aether-usr-' + Math.random().toString(36).substring(2, 12).toLowerCase();
-      syncCodeInput.value = randCode;
-      await state.saveSyncCode(randCode);
-      alert(`New Sync Code Generated: ${randCode}. Keep this secret!`);
+      genSyncCodeBtn.disabled = true;
+      genSyncCodeBtn.innerText = "Generating...";
+      try {
+        const newCode = await state.generateSyncCode();
+        syncCodeInput.value = newCode;
+        alert(`New Sync Code Generated & Initialized: ${newCode}\nKeep this secret!`);
+      } catch (err) {
+        alert("Failed to initialize Cloud Sync: " + err.message);
+      } finally {
+        genSyncCodeBtn.disabled = false;
+        genSyncCodeBtn.innerText = "Generate New";
+      }
     });
   }
 

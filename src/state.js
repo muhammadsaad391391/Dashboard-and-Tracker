@@ -597,9 +597,8 @@ class AppState {
     this.notify();
   }
 
-  // Cloud Sync: Push local database payload to kvdb.io
-  async pushToCloud() {
-    if (!this.syncCode) return;
+  // Cloud Sync: Initialize remote database document and retrieve Blob ID
+  async generateSyncCode() {
     try {
       const payload = {
         days: this.days,
@@ -608,9 +607,52 @@ class AppState {
         customSections: this.customSections,
         timestamp: Date.now()
       };
-      const response = await fetch(`https://kvdb.io/4y935uJ8z72A1bCDeFgHiJ/${this.syncCode}`, {
+      const response = await fetch('https://jsonblob.com/api/jsonBlob', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          'Accept': 'application/json'
+        },
+        body: JSON.stringify(payload)
+      });
+      if (!response.ok) throw new Error("Could not initialize cloud sync code.");
+      
+      const location = response.headers.get('Location');
+      if (!location) throw new Error("Server did not return location header.");
+      
+      const parts = location.split('/');
+      const blobId = parts[parts.length - 1];
+      
+      this.syncCode = blobId;
+      await db.settings.put({ key: 'sync_code', value: blobId });
+      this.notify();
+      return blobId;
+    } catch (err) {
+      console.error("Failed to generate sync code:", err);
+      throw err;
+    }
+  }
+
+  // Cloud Sync: Push local database payload to jsonblob.com
+  async pushToCloud() {
+    if (!this.syncCode) {
+      await this.generateSyncCode();
+      return;
+    }
+    try {
+      const payload = {
+        days: this.days,
+        nonNegotiables: this.nonNegotiables,
+        projects: this.projects,
+        customSections: this.customSections,
+        timestamp: Date.now()
+      };
+      const response = await fetch(`https://jsonblob.com/api/jsonBlob/${this.syncCode}`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          'Accept': 'application/json'
+        },
         body: JSON.stringify(payload)
       });
       if (!response.ok) throw new Error("Sync upload failed");
@@ -620,12 +662,17 @@ class AppState {
     }
   }
 
-  // Cloud Sync: Pull database payload from kvdb.io and overwrite IndexedDB
+  // Cloud Sync: Pull database payload from jsonblob.com and overwrite IndexedDB
   async pullFromCloud(code) {
     const targetCode = code || this.syncCode;
     if (!targetCode) return false;
     try {
-      const response = await fetch(`https://kvdb.io/4y935uJ8z72A1bCDeFgHiJ/${targetCode}`);
+      const response = await fetch(`https://jsonblob.com/api/jsonBlob/${targetCode}`, {
+        method: 'GET',
+        headers: {
+          'Accept': 'application/json'
+        }
+      });
       if (!response.ok) {
         if (response.status === 404) {
           // If code doesn't exist yet, we push our current local state as the starting point!
