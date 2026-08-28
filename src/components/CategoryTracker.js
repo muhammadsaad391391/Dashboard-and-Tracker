@@ -1,5 +1,6 @@
 import { icons } from '../icons.js';
 import confetti from 'canvas-confetti';
+import { showPlannerCellPopup } from './PlannerCellPopup.js';
 
 export function renderCategoryTracker(container, state, categoryId, categoryLabel, categoryType, categoryIcon) {
   let savedScrollLeft = 0;
@@ -155,11 +156,28 @@ export function renderCategoryTracker(container, state, categoryId, categoryLabe
       if (taskId) {
         showCatCellStatusOverlay(e, cell, date, taskId, state, categoryId, categoryLabel, categoryType, categoryIcon);
       } else {
-        if (state.clipboard) {
-          showCatEmptyCellOverlay(e, cell, date, time, state, categoryId, categoryLabel, categoryType, categoryIcon);
-        } else {
-          enterCatCellEditMode(cell, date, time, state, categoryId, categoryLabel, categoryType, categoryIcon);
-        }
+        showPlannerCellPopup(e, cell, date, time, state, categoryType, async (taskName) => {
+          const day = state.days.find(d => d.date === date);
+          if (day) {
+            const newTask = {
+              id: 't-' + Date.now(),
+              name: taskName,
+              plannedTime: time,
+              status: 'pending',
+              missedReason: '',
+              actualTime: '',
+              type: categoryType
+            };
+            day.schedule.push(newTask);
+            day.schedule.sort((a, b) => {
+              const indexA = state.timeIntervals.indexOf(a.plannedTime);
+              const indexB = state.timeIntervals.indexOf(b.plannedTime);
+              return indexA - indexB;
+            });
+            await state.updateDay(date, { schedule: day.schedule });
+            renderCategoryTracker(container, state, categoryId, categoryLabel, categoryType, categoryIcon);
+          }
+        });
       }
     });
   });

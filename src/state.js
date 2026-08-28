@@ -689,6 +689,8 @@ class AppState {
       availableHoursPerDay: Number(project.availableHoursPerDay) || 0,
       nextGoal: project.nextGoal || '',
       lastWorkedOn: project.lastWorkedOn || Date.now(),
+      isDailyAllocation: !!project.isDailyAllocation,
+      dailyAllocationMinutes: Number(project.dailyAllocationMinutes) || 0,
       subtasks: project.subtasks || []
     };
     const id = await db.projects.add(cleanProj);

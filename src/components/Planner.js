@@ -1,5 +1,6 @@
 import { icons } from '../icons.js';
 import confetti from 'canvas-confetti';
+import { showPlannerCellPopup } from './PlannerCellPopup.js';
 
 // Fixed time slots for spreadsheet grid matching the user's reference
 const TIME_SLOTS = [
@@ -228,12 +229,28 @@ function renderGridSubView(container, state) {
         // Cell already has a task, show Status Switcher overlay
         showCellStatusOverlay(e, cell, date, taskId, state);
       } else {
-        if (state.clipboard) {
-          showEmptyCellOverlay(e, cell, date, time, state);
-        } else {
-          // Cell is empty, insert inline text input
-          enterCellEditMode(cell, date, time, state);
-        }
+        showPlannerCellPopup(e, cell, date, time, state, 'general', async (taskName) => {
+          const day = state.days.find(d => d.date === date);
+          if (day) {
+            const newTask = {
+              id: 't-' + Date.now(),
+              name: taskName,
+              plannedTime: time,
+              status: 'pending',
+              missedReason: '',
+              actualTime: '',
+              type: 'general'
+            };
+            day.schedule.push(newTask);
+            day.schedule.sort((a, b) => {
+              const indexA = state.timeIntervals.indexOf(a.plannedTime);
+              const indexB = state.timeIntervals.indexOf(b.plannedTime);
+              return indexA - indexB;
+            });
+            await state.updateDay(date, { schedule: day.schedule });
+            renderPlanner(container, state);
+          }
+        });
       }
     });
   });
