@@ -616,11 +616,8 @@ class AppState {
     return code;
   }
 
-  // Cloud Sync: Push local database payload to kvdb.io
+  // Cloud Sync: Push local database payload to Neon / serverless DB backend
   async pushToCloud() {
-    if (!this.syncBucketId) {
-      throw new Error("Missing KVdb Bucket ID. Please configure it in Settings.");
-    }
     if (!this.syncCode) {
       await this.generateSyncCode();
     }
@@ -632,16 +629,14 @@ class AppState {
         customSections: this.customSections,
         timestamp: Date.now()
       };
-      const response = await fetch(`https://kvdb.io/${this.syncBucketId}/${this.syncCode}`, {
+      const response = await fetch(`/api/sync?code=${this.syncCode}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload)
       });
       if (!response.ok) {
-        if (response.status === 403) {
-          throw new Error("CORS or Verification Error: Make sure your KVdb Bucket ID is verified.");
-        }
-        throw new Error(`Sync upload failed: Status ${response.status}`);
+        const errData = await response.json().catch(() => ({}));
+        throw new Error(errData.error || errData.details || `Sync upload failed: Status ${response.status}`);
       }
       console.log("Cloud sync pushed successfully.");
     } catch (err) {
@@ -650,15 +645,12 @@ class AppState {
     }
   }
 
-  // Cloud Sync: Pull database payload from kvdb.io and overwrite IndexedDB
+  // Cloud Sync: Pull database payload from Neon / serverless DB backend and overwrite IndexedDB
   async pullFromCloud(code) {
-    if (!this.syncBucketId) {
-      throw new Error("Missing KVdb Bucket ID. Please configure it in Settings.");
-    }
     const targetCode = code || this.syncCode;
     if (!targetCode) return false;
     try {
-      const response = await fetch(`https://kvdb.io/${this.syncBucketId}/${targetCode}`);
+      const response = await fetch(`/api/sync?code=${targetCode}`);
       if (!response.ok) {
         if (response.status === 404) {
           // If code doesn't exist yet, we push our current local state as the starting point!
@@ -670,7 +662,8 @@ class AppState {
           }
           return false;
         }
-        throw new Error(`Sync download failed: Status ${response.status}`);
+        const errData = await response.json().catch(() => ({}));
+        throw new Error(errData.error || errData.details || `Sync download failed: Status ${response.status}`);
       }
       const data = await response.json();
       if (data && data.days) {
