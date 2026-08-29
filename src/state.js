@@ -334,8 +334,8 @@ class AppState {
   }
 
   // Toggle sidebar visibility
-  toggleSidebar() {
-    this.sidebarCollapsed = !this.sidebarCollapsed;
+  toggleSidebar(collapsed) {
+    this.sidebarCollapsed = collapsed !== undefined ? collapsed : !this.sidebarCollapsed;
     this.notify();
   }
 

@@ -1752,3 +1752,162 @@ html.light .theme-switch-thumb {
   background-color: var(--bg-secondary);
   color: var(--text-primary);
 }
+
+/* ==========================================================================
+   MOBILE RESPONSIVENESS & TOUCH OPTIMIZATIONS (Screen width <= 768px)
+   ========================================================================== */
+@media (max-width: 768px) {
+  :root {
+    --header-height: 64px;
+  }
+
+  /* Reset layout structure for slide-over drawer sidebar */
+  .main-layout {
+    margin-left: 0 !important;
+    min-height: calc(100vh - var(--header-height));
+  }
+
+  .sidebar-container {
+    transform: translateX(-100%);
+    width: var(--sidebar-width) !important;
+    position: fixed;
+    top: 0;
+    left: 0;
+    height: 100vh;
+    z-index: 1000;
+    box-shadow: 0 0 30px rgba(0, 0, 0, 0.25);
+    transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  }
+
+  /* Slide-in sidebar when expanded (not collapsed) */
+  .app-container:not(.sidebar-collapsed) .sidebar-container {
+    transform: translateX(0);
+    pointer-events: auto;
+  }
+
+  /* Backdrop overlay for mobile sidebar */
+  .sidebar-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100vw;
+    height: 100vh;
+    background-color: rgba(0, 0, 0, 0.4);
+    backdrop-filter: blur(2px);
+    z-index: 999;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.3s ease;
+  }
+
+  .app-container:not(.sidebar-collapsed) .sidebar-overlay {
+    opacity: 1;
+    pointer-events: auto;
+  }
+
+  /* Header adjustments */
+  .header-container {
+    padding: 0 16px;
+    height: var(--header-height);
+  }
+
+  .header-title {
+    font-size: 16px;
+  }
+
+  .header-subtitle {
+    font-size: 10px;
+  }
+
+  .header-metrics {
+    display: none !important; /* Hide metrics row in header to prevent squeeze */
+  }
+
+  .view-container {
+    padding: 16px;
+  }
+
+  /* General Card adjustments */
+  .card {
+    padding: 16px;
+    margin-bottom: 16px;
+  }
+
+  .card-title {
+    font-size: 14px;
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+
+  /* Forms & settings layouts */
+  .settings-row {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 8px;
+  }
+
+  .settings-row-info {
+    margin-bottom: 4px;
+  }
+
+  .premium-input, input[type="text"], input[type="date"], select, textarea {
+    width: 100% !important;
+  }
+
+  .view-tabs {
+    flex-wrap: wrap;
+    justify-content: center;
+    width: 100%;
+    gap: 4px;
+  }
+
+  .tab-btn {
+    padding: 6px 10px;
+    font-size: 12px;
+    flex: 1;
+    justify-content: center;
+  }
+
+  /* Planner Day view accordion */
+  .day-card-header {
+    padding: 12px 16px;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 8px;
+  }
+
+  .day-header-indicators {
+    width: 100%;
+    justify-content: space-between;
+  }
+
+  .day-progress-mini {
+    width: 120px;
+  }
+
+  /* Non-Negotiables & Managers row wrapping */
+  .manager-row {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 12px;
+  }
+
+  .manager-input-area {
+    flex-direction: column;
+    gap: 8px;
+  }
+
+  /* Quick action buttons row */
+  .header-actions {
+    gap: 8px;
+  }
+
+  /* Finance grid layout overrides */
+  .finance-input-grid, 
+  .finance-summary-grid,
+  .analytics-grid,
+  .projects-grid {
+    grid-template-columns: 1fr !important;
+    gap: 16px !important;
+  }
+}

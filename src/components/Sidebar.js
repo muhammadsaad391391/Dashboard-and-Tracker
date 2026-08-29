@@ -107,6 +107,9 @@ export function renderSidebar(container, state) {
     item.addEventListener('click', () => {
       const view = item.getAttribute('data-view');
       state.setView(view);
+      if (window.innerWidth <= 768) {
+        state.toggleSidebar(true);
+      }
     });
   });
 

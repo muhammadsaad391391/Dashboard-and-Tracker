@@ -551,3 +551,11 @@ document.addEventListener('keydown', async (e) => {
     await performPaste();
   }
 });
+
+// Mobile Sidebar Overlay Backdrop Click
+const sidebarOverlay = document.getElementById('sidebar-overlay');
+if (sidebarOverlay) {
+  sidebarOverlay.addEventListener('click', () => {
+    state.toggleSidebar(true);
+  });
+}
