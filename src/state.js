@@ -220,12 +220,9 @@ class AppState {
       this.customSections = sectionsSetting ? sectionsSetting.value : [];
 
       if (window.setAetherLoaderText) window.setAetherLoaderText('Loading cloud synchronization...');
-      // Load cloud sync & AI settings
-      const syncCodeSetting = await db.settings.get('sync_code');
-      this.syncCode = syncCodeSetting ? syncCodeSetting.value : 'global_shared_backup';
-      if (!syncCodeSetting) {
-        await db.settings.put({ key: 'sync_code', value: 'global_shared_backup' });
-      }
+      // Force syncCode to global_shared_backup to ensure all devices share the exact same DB entry
+      this.syncCode = 'global_shared_backup';
+      await db.settings.put({ key: 'sync_code', value: 'global_shared_backup' });
 
       const syncEnabledSetting = await db.settings.get('sync_enabled');
       this.syncEnabled = syncEnabledSetting ? !!syncEnabledSetting.value : true;
