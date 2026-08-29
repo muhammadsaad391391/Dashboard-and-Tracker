@@ -224,6 +224,9 @@ class AppState {
       const syncCodeSetting = await db.settings.get('sync_code');
       this.syncCode = syncCodeSetting ? syncCodeSetting.value : '';
 
+      const syncBucketSetting = await db.settings.get('sync_bucket_id');
+      this.syncBucketId = syncBucketSetting ? syncBucketSetting.value : '';
+
       const syncEnabledSetting = await db.settings.get('sync_enabled');
       this.syncEnabled = syncEnabledSetting ? !!syncEnabledSetting.value : false;
 
@@ -587,6 +590,13 @@ class AppState {
     this.notify();
   }
 
+  // Save Sync Bucket ID
+  async saveSyncBucketId(bucketId) {
+    this.syncBucketId = bucketId;
+    await db.settings.put({ key: 'sync_bucket_id', value: bucketId });
+    this.notify();
+  }
+
   // Toggle Cloud Sync
   async toggleSync(enabled) {
     this.syncEnabled = enabled;
@@ -597,8 +607,23 @@ class AppState {
     this.notify();
   }
 
-  // Cloud Sync: Initialize remote database document and retrieve Blob ID
+  // Cloud Sync: Generate a random sync code (key) locally
   async generateSyncCode() {
+    const code = 'aether-usr-' + Math.random().toString(36).substring(2, 12).toLowerCase();
+    this.syncCode = code;
+    await db.settings.put({ key: 'sync_code', value: code });
+    this.notify();
+    return code;
+  }
+
+  // Cloud Sync: Push local database payload to kvdb.io
+  async pushToCloud() {
+    if (!this.syncBucketId) {
+      throw new Error("Missing KVdb Bucket ID. Please configure it in Settings.");
+    }
+    if (!this.syncCode) {
+      await this.generateSyncCode();
+    }
     try {
       const payload = {
         days: this.days,
@@ -607,72 +632,33 @@ class AppState {
         customSections: this.customSections,
         timestamp: Date.now()
       };
-      const response = await fetch('https://jsonblob.com/api/jsonBlob', {
+      const response = await fetch(`https://kvdb.io/${this.syncBucketId}/${this.syncCode}`, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Accept': 'application/json'
-        },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload)
       });
-      if (!response.ok) throw new Error("Could not initialize cloud sync code.");
-      
-      const location = response.headers.get('Location');
-      if (!location) throw new Error("Server did not return location header.");
-      
-      const parts = location.split('/');
-      const blobId = parts[parts.length - 1];
-      
-      this.syncCode = blobId;
-      await db.settings.put({ key: 'sync_code', value: blobId });
-      this.notify();
-      return blobId;
+      if (!response.ok) {
+        if (response.status === 403) {
+          throw new Error("CORS or Verification Error: Make sure your KVdb Bucket ID is verified.");
+        }
+        throw new Error(`Sync upload failed: Status ${response.status}`);
+      }
+      console.log("Cloud sync pushed successfully.");
     } catch (err) {
-      console.error("Failed to generate sync code:", err);
+      console.error("Cloud push failed:", err);
       throw err;
     }
   }
 
-  // Cloud Sync: Push local database payload to jsonblob.com
-  async pushToCloud() {
-    if (!this.syncCode) {
-      await this.generateSyncCode();
-      return;
-    }
-    try {
-      const payload = {
-        days: this.days,
-        nonNegotiables: this.nonNegotiables,
-        projects: this.projects,
-        customSections: this.customSections,
-        timestamp: Date.now()
-      };
-      const response = await fetch(`https://jsonblob.com/api/jsonBlob/${this.syncCode}`, {
-        method: 'PUT',
-        headers: {
-          'Content-Type': 'application/json',
-          'Accept': 'application/json'
-        },
-        body: JSON.stringify(payload)
-      });
-      if (!response.ok) throw new Error("Sync upload failed");
-      console.log("Cloud sync pushed successfully.");
-    } catch (err) {
-      console.error("Cloud push failed:", err);
-    }
-  }
-
-  // Cloud Sync: Pull database payload from jsonblob.com and overwrite IndexedDB
+  // Cloud Sync: Pull database payload from kvdb.io and overwrite IndexedDB
   async pullFromCloud(code) {
+    if (!this.syncBucketId) {
+      throw new Error("Missing KVdb Bucket ID. Please configure it in Settings.");
+    }
     const targetCode = code || this.syncCode;
     if (!targetCode) return false;
     try {
-      const response = await fetch(`https://jsonblob.com/api/jsonBlob/${targetCode}`, {
-        method: 'GET',
-        headers: {
-          'Accept': 'application/json'
-        }
-      });
+      const response = await fetch(`https://kvdb.io/${this.syncBucketId}/${targetCode}`);
       if (!response.ok) {
         if (response.status === 404) {
           // If code doesn't exist yet, we push our current local state as the starting point!
@@ -684,7 +670,7 @@ class AppState {
           }
           return false;
         }
-        throw new Error("Sync download failed");
+        throw new Error(`Sync download failed: Status ${response.status}`);
       }
       const data = await response.json();
       if (data && data.days) {

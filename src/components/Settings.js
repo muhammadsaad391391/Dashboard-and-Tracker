@@ -122,15 +122,35 @@ export function renderSettings(container, state) {
     <!-- Cloud Synchronization Card -->
     <div class="card" style="margin-bottom: 24px;">
       <div class="card-title">Cloud Synchronization (Access Anywhere)</div>
-      <p style="font-size: 13px; color: var(--text-secondary); margin-bottom: 16px;">
-        Replicate your Aether database across your phone, tablet, and laptop. All updates sync instantly in the background without needing a user account.
+      <p style="font-size: 13px; color: var(--text-secondary); margin-bottom: 12px;">
+        Replicate your Aether database across your phone, tablet, and laptop. All updates sync instantly in the background using your own secure, private bucket.
       </p>
+
+      <div style="background-color: var(--bg-secondary); border-left: 4px solid var(--accent-color); padding: 12px; border-radius: var(--radius-sm); margin-bottom: 16px; font-size: 12px; line-height: 1.5;">
+        <strong>How to set up:</strong>
+        <ol style="margin: 4px 0 0 16px; padding: 0;">
+          <li>Go to <a href="https://kvdb.io" target="_blank" style="color: var(--accent-color); text-decoration: underline; font-weight: 600;">kvdb.io</a> and enter your email at the top to create a bucket.</li>
+          <li>Click the verification link sent to your inbox to activate it.</li>
+          <li>Copy your 22-character <strong>Bucket ID</strong> and paste it below.</li>
+          <li>Set a unique <strong>Sync Code</strong> (or click "Generate New"), then click <strong>Push to Cloud</strong>!</li>
+        </ol>
+      </div>
       
       <div style="display:flex; flex-direction:column; gap:16px;">
         <div style="display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:12px; background-color:var(--bg-tertiary); padding:16px; border:1px solid var(--border-color); border-radius:var(--radius-sm);">
           <div style="display:flex; flex-direction:column; gap:4px; flex:1; min-width:200px;">
+            <span style="font-size:14px; font-weight:700;">KVdb Bucket ID</span>
+            <span style="font-size:11px; color:var(--text-secondary);">Your personal verified bucket ID from kvdb.io.</span>
+          </div>
+          <div style="display:flex; align-items:center; gap:8px;">
+            <input type="text" id="sync-bucket-input" class="premium-input" value="${state.syncBucketId || ''}" placeholder="e.g. 61cP9B2ZQ5iCXj9..." style="width:240px; height:32px; font-family:var(--font-mono); font-size:11px; padding:4px 8px;">
+          </div>
+        </div>
+
+        <div style="display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:12px; background-color:var(--bg-tertiary); padding:16px; border:1px solid var(--border-color); border-radius:var(--radius-sm);">
+          <div style="display:flex; flex-direction:column; gap:4px; flex:1; min-width:200px;">
             <span style="font-size:14px; font-weight:700;">Sync Code</span>
-            <span style="font-size:11px; color:var(--text-secondary);">Enter this code on other devices to fetch or push database states.</span>
+            <span style="font-size:11px; color:var(--text-secondary);">Your private access key. Use the same code on all devices.</span>
           </div>
           <div style="display:flex; align-items:center; gap:8px;">
             <input type="text" id="sync-code-input" class="premium-input" value="${state.syncCode}" placeholder="Enter sync code..." style="width:160px; height:32px; font-family:var(--font-mono); font-size:11px; padding:4px 8px;">
@@ -345,25 +365,28 @@ export function renderSettings(container, state) {
   });
 
   // --- Cloud Sync Event Listeners ---
+  const syncBucketInput = container.querySelector('#sync-bucket-input');
   const syncCodeInput = container.querySelector('#sync-code-input');
   const genSyncCodeBtn = container.querySelector('#generate-sync-code-btn');
   const syncToggleCheck = container.querySelector('#sync-toggle-check');
   const pushCloudBtn = container.querySelector('#push-cloud-btn');
   const pullCloudBtn = container.querySelector('#pull-cloud-btn');
 
+  if (syncBucketInput) {
+    syncBucketInput.addEventListener('change', async () => {
+      const bucketId = syncBucketInput.value.trim();
+      await state.saveSyncBucketId(bucketId);
+    });
+  }
+
   if (genSyncCodeBtn && syncCodeInput) {
     genSyncCodeBtn.addEventListener('click', async () => {
-      genSyncCodeBtn.disabled = true;
-      genSyncCodeBtn.innerText = "Generating...";
       try {
         const newCode = await state.generateSyncCode();
         syncCodeInput.value = newCode;
-        alert(`New Sync Code Generated & Initialized: ${newCode}\nKeep this secret!`);
+        alert(`New Sync Code Generated: ${newCode}\nKeep this secret!`);
       } catch (err) {
-        alert("Failed to initialize Cloud Sync: " + err.message);
-      } finally {
-        genSyncCodeBtn.disabled = false;
-        genSyncCodeBtn.innerText = "Generate New";
+        alert("Failed to generate code: " + err.message);
       }
     });
   }
@@ -377,6 +400,11 @@ export function renderSettings(container, state) {
 
   if (syncToggleCheck) {
     syncToggleCheck.addEventListener('change', async () => {
+      if (syncToggleCheck.checked && !state.syncBucketId) {
+        alert("⚠️ Please configure and save your KVdb Bucket ID before enabling Auto-Sync.");
+        syncToggleCheck.checked = false;
+        return;
+      }
       await state.toggleSync(syncToggleCheck.checked);
       if (syncToggleCheck.checked) {
         alert("Auto-Sync is now ENABLED! Your updates will auto-save to cloud.");
@@ -388,8 +416,13 @@ export function renderSettings(container, state) {
 
   if (pushCloudBtn) {
     pushCloudBtn.addEventListener('click', async () => {
+      const bucketId = syncBucketInput ? syncBucketInput.value.trim() : '';
+      if (!bucketId) {
+        alert("⚠️ Please enter your KVdb Bucket ID first!");
+        return;
+      }
       if (!state.syncCode) {
-        alert("Please set or generate a Sync Code first!");
+        alert("⚠️ Please set or generate a Sync Code first!");
         return;
       }
       pushCloudBtn.disabled = true;
@@ -409,9 +442,14 @@ export function renderSettings(container, state) {
 
   if (pullCloudBtn) {
     pullCloudBtn.addEventListener('click', async () => {
+      const bucketId = syncBucketInput ? syncBucketInput.value.trim() : '';
+      if (!bucketId) {
+        alert("⚠️ Please enter your KVdb Bucket ID first!");
+        return;
+      }
       const code = syncCodeInput ? syncCodeInput.value.trim() : '';
       if (!code) {
-        alert("Please enter a Sync Code to pull from!");
+        alert("⚠️ Please enter a Sync Code to pull from!");
         return;
       }
       if (confirm("⚠️ WARNING: Pulling from Cloud will completely replace your current local planner and finance logs. Are you sure you want to overwrite local data?")) {
@@ -424,7 +462,7 @@ export function renderSettings(container, state) {
             alert("Cloud data successfully pulled and loaded!");
             state.setView('dashboard');
           } else {
-            alert("No cloud backup found for this Sync Code yet. Click 'Push to Cloud' first to initialize this code!");
+            alert("No cloud backup found for this Sync Code yet under this Bucket ID. Click 'Push to Cloud' first to initialize this code!");
           }
         } catch (err) {
           alert("Cloud Pull failed: " + err.message);
