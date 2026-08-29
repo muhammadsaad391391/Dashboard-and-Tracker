@@ -222,13 +222,16 @@ class AppState {
       if (window.setAetherLoaderText) window.setAetherLoaderText('Loading cloud synchronization...');
       // Load cloud sync & AI settings
       const syncCodeSetting = await db.settings.get('sync_code');
-      this.syncCode = syncCodeSetting ? syncCodeSetting.value : '';
-
-      const syncBucketSetting = await db.settings.get('sync_bucket_id');
-      this.syncBucketId = syncBucketSetting ? syncBucketSetting.value : '';
+      this.syncCode = syncCodeSetting ? syncCodeSetting.value : 'global_shared_backup';
+      if (!syncCodeSetting) {
+        await db.settings.put({ key: 'sync_code', value: 'global_shared_backup' });
+      }
 
       const syncEnabledSetting = await db.settings.get('sync_enabled');
-      this.syncEnabled = syncEnabledSetting ? !!syncEnabledSetting.value : false;
+      this.syncEnabled = syncEnabledSetting ? !!syncEnabledSetting.value : true;
+      if (!syncEnabledSetting) {
+        await db.settings.put({ key: 'sync_enabled', value: true });
+      }
 
       if (window.setAetherLoaderText) window.setAetherLoaderText('Loading artificial intelligence...');
       const geminiKeySetting = await db.settings.get('gemini_api_key');
@@ -241,8 +244,16 @@ class AppState {
       const view = this.currentView;
       this.sidebarCollapsed = (view === 'planner' || view === 'study' || view === 'etsy-seo' || view === 'finance' || view === 'calendar' || view.startsWith('sec-'));
 
-      // Data collections fetched successfully earlier
-      
+      // Automate Cloud database sync at launch
+      if (this.syncEnabled) {
+        if (window.setAetherLoaderText) window.setAetherLoaderText('Syncing with PostgreSQL database...');
+        try {
+          await this.pullFromCloud(this.syncCode);
+        } catch (e) {
+          console.warn("Could not sync with cloud database at launch (offline or DB not set up yet):", e);
+        }
+      }
+
       if (window.setAetherLoaderText) window.setAetherLoaderText('Initializing workspace...');
       this.initialized = true;
       this.notify();

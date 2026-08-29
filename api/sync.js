@@ -24,10 +24,8 @@ export default async function handler(req, res) {
     });
   }
 
-  const syncCode = req.query.code;
-  if (!syncCode) {
-    return res.status(400).json({ error: "Missing 'code' query parameter." });
-  }
+  // Default to global_shared_backup if no code is provided
+  const syncCode = req.query.code || 'global_shared_backup';
 
   const client = new Client({
     connectionString: DATABASE_URL,

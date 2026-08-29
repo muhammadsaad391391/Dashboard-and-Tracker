@@ -122,53 +122,12 @@ export function renderSettings(container, state) {
     <!-- Cloud Synchronization Card -->
     <div class="card" style="margin-bottom: 24px;">
       <div class="card-title">Cloud Synchronization (Access Anywhere)</div>
-      <p style="font-size: 13px; color: var(--text-secondary); margin-bottom: 12px;">
-        Replicate your Aether database across your phone, tablet, and laptop. All updates sync instantly in the background using a secure PostgreSQL serverless function.
+      <p style="font-size: 13px; color: var(--text-secondary); margin-bottom: 8px;">
+        ⚡ <strong>Active &amp; Automatic</strong>
       </p>
-
-      <div style="background-color: var(--bg-secondary); border-left: 4px solid var(--accent-color); padding: 12px; border-radius: var(--radius-sm); margin-bottom: 16px; font-size: 12px; line-height: 1.5;">
-        <strong>Database Setup Instructions (100% Free):</strong>
-        <ol style="margin: 4px 0 0 16px; padding: 0;">
-          <li>Create a free serverless PostgreSQL database on <a href="https://neon.tech" target="_blank" style="color: var(--accent-color); text-decoration: underline; font-weight: 600;">neon.tech</a> or any other cloud provider.</li>
-          <li>Copy your database connection string (e.g. <code>postgres://...</code>).</li>
-          <li>Go to your Vercel Project Dashboard ➡️ <strong>Settings</strong> ➡️ <strong>Environment Variables</strong>.</li>
-          <li>Add a new variable named <code>DATABASE_URL</code> and paste your connection string.</li>
-          <li>Re-deploy your project on Vercel to activate the serverless sync backend!</li>
-        </ol>
-      </div>
-      
-      <div style="display:flex; flex-direction:column; gap:16px;">
-        <div style="display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:12px; background-color:var(--bg-tertiary); padding:16px; border:1px solid var(--border-color); border-radius:var(--radius-sm);">
-          <div style="display:flex; flex-direction:column; gap:4px; flex:1; min-width:200px;">
-            <span style="font-size:14px; font-weight:700;">Sync Code</span>
-            <span style="font-size:11px; color:var(--text-secondary);">Your private access key. Use the same code on all devices.</span>
-          </div>
-          <div style="display:flex; align-items:center; gap:8px;">
-            <input type="text" id="sync-code-input" class="premium-input" value="${state.syncCode}" placeholder="Enter sync code..." style="width:160px; height:32px; font-family:var(--font-mono); font-size:11px; padding:4px 8px;">
-            <button class="btn btn-secondary btn-sm" id="generate-sync-code-btn" style="height:32px; font-size:11px; padding:0 8px;">Generate New</button>
-          </div>
-        </div>
-
-        <div style="display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:12px; background-color:var(--bg-tertiary); padding:16px; border:1px solid var(--border-color); border-radius:var(--radius-sm);">
-          <div style="display:flex; flex-direction:column; gap:4px; flex:1; min-width:200px;">
-            <span style="font-size:14px; font-weight:700;">Auto-Sync Background</span>
-            <span style="font-size:11px; color:var(--text-secondary);">Automatically upload backups on every planner edit and load remote changes at launch.</span>
-          </div>
-          <div style="display:flex; align-items:center; gap:8px;">
-            <input type="checkbox" id="sync-toggle-check" ${state.syncEnabled ? 'checked' : ''} style="width:20px; height:20px; cursor:pointer;">
-            <span style="font-size:12px; font-weight:600;">Enable Auto-Sync</span>
-          </div>
-        </div>
-
-        <div style="display:flex; gap:12px;">
-          <button class="btn btn-primary" id="push-cloud-btn" style="flex:1; justify-content:center; gap:8px;">
-            ${icons.sync} Push to Cloud
-          </button>
-          <button class="btn btn-secondary" id="pull-cloud-btn" style="flex:1; justify-content:center; gap:8px;">
-            ${icons.import} Pull from Cloud
-          </button>
-        </div>
-      </div>
+      <p style="font-size: 12px; color: var(--text-muted); line-height: 1.5;">
+        Your schedules, tasks, and finance logs are automatically saved to your PostgreSQL database in the background. Opening Aether on your phone, laptop, or tablet will load the exact same data instantly.
+      </p>
     </div>
 
 
