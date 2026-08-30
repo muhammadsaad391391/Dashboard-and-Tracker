@@ -342,6 +342,7 @@ class AppState {
   async updateTimeIntervals(intervals) {
     this.timeIntervals = intervals;
     await db.settings.put({ key: 'time_intervals', value: intervals });
+    if (this.syncEnabled) await this.pushToCloud();
     this.notify();
   }
 
@@ -371,6 +372,7 @@ class AppState {
     if (updatesMap.length > 0) {
       await this.updateDaysBulk(updatesMap);
     } else {
+      if (this.syncEnabled) await this.pushToCloud();
       this.notify();
     }
   }
@@ -587,6 +589,7 @@ class AppState {
   async saveAvailableTimeToday(val) {
     this.availableTimeToday = val;
     await db.settings.put({ key: 'available_time_today', value: val });
+    if (this.syncEnabled) await this.pushToCloud();
     this.notify();
   }
 
@@ -634,6 +637,8 @@ class AppState {
         nonNegotiables: this.nonNegotiables,
         projects: this.projects,
         customSections: this.customSections,
+        timeIntervals: this.timeIntervals,
+        availableTimeToday: this.availableTimeToday,
         timestamp: Date.now()
       };
       const response = await fetch(`/api/sync?code=${this.syncCode}`, {
@@ -690,6 +695,16 @@ class AppState {
         if (data.customSections) {
           this.customSections = data.customSections;
           await db.settings.put({ key: 'custom_sections', value: this.customSections });
+        }
+
+        if (data.timeIntervals) {
+          this.timeIntervals = data.timeIntervals;
+          await db.settings.put({ key: 'time_intervals', value: this.timeIntervals });
+        }
+
+        if (data.availableTimeToday) {
+          this.availableTimeToday = data.availableTimeToday;
+          await db.settings.put({ key: 'available_time_today', value: this.availableTimeToday });
         }
 
         if (code) {
