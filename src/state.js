@@ -25,6 +25,7 @@ class AppState {
     this.geminiApiKey = import.meta.env.VITE_GEMINI_API_KEY || '';
     this.availableTimeToday = '2h';
     this.chatHistory = [];
+    this.lastSyncTimestamp = 0;
   }
 
   getTodayDateStr() {
@@ -252,6 +253,21 @@ class AppState {
 
       if (window.setAetherLoaderText) window.setAetherLoaderText('Initializing workspace...');
       this.initialized = true;
+
+      // Start Background Sync polling & Focus listeners
+      if (this.syncEnabled) {
+        // Poll for updates in the background every 8 seconds
+        setInterval(() => this.pollCloudUpdates(), 8000);
+
+        // Immediate background pull when page gains focus / visibility
+        window.addEventListener('focus', () => this.pollCloudUpdates());
+        document.addEventListener('visibilitychange', () => {
+          if (document.visibilityState === 'visible') {
+            this.pollCloudUpdates();
+          }
+        });
+      }
+
       this.notify();
     } catch (err) {
       console.error("Initialization failed:", err);
@@ -641,6 +657,7 @@ class AppState {
         availableTimeToday: this.availableTimeToday,
         timestamp: Date.now()
       };
+      this.lastSyncTimestamp = payload.timestamp;
       const response = await fetch(`/api/sync?code=${this.syncCode}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -707,6 +724,10 @@ class AppState {
           await db.settings.put({ key: 'available_time_today', value: this.availableTimeToday });
         }
 
+        if (data.timestamp) {
+          this.lastSyncTimestamp = data.timestamp;
+        }
+
         if (code) {
           this.syncCode = code;
           await db.settings.put({ key: 'sync_code', value: code });
@@ -721,6 +742,23 @@ class AppState {
       throw err;
     }
     return false;
+  }
+
+  // Background Sync Polling
+  async pollCloudUpdates() {
+    if (!this.syncEnabled || !this.syncCode || !this.initialized) return;
+    try {
+      const response = await fetch(`/api/sync?code=${this.syncCode}`);
+      if (response.ok) {
+        const data = await response.json();
+        if (data && data.timestamp && data.timestamp > this.lastSyncTimestamp) {
+          console.log("Background sync: Newer data found on cloud. Updating...");
+          await this.pullFromCloud();
+        }
+      }
+    } catch (err) {
+      console.warn("Background update check failed:", err);
+    }
   }
 
   // Project Hub Actions
