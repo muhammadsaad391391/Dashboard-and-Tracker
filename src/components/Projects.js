@@ -21,6 +21,96 @@ export function getDailyAllocationStats(proj, state) {
   return { completedMinutes, totalMinutes, targetMinutes, percent };
 }
 
+export function getProjectDetailsContentHTML(proj, state) {
+  const allocStats = proj.isDailyAllocation ? getDailyAllocationStats(proj, state) : null;
+  return `
+    <div style="display:flex; flex-direction:column; gap:16px;">
+      
+      <!-- Subtasks Section -->
+      <div>
+        <span style="font-size:12px; font-weight:800; text-transform:uppercase; letter-spacing:0.05em; color:var(--text-secondary);">
+          ${proj.isDailyAllocation ? 'Daily Allocation Progress' : 'Subtasks & Roadmap'}
+        </span>
+        <div style="margin-top:8px;">
+          ${proj.isDailyAllocation ? `
+            <div style="background-color:var(--bg-tertiary); padding:16px; border-radius:var(--radius-sm); border:1px solid var(--border-color); display:flex; flex-direction:column; gap:8px;">
+              <div style="display:flex; justify-content:space-between; align-items:center;">
+                <span style="font-size:13px; font-weight:700; color:var(--text-primary);">🎯 Daily Goal: ${allocStats.targetMinutes} mins</span>
+                <span style="font-size:12px; font-weight:700; color:var(--accent);">${allocStats.completedMinutes} / ${allocStats.targetMinutes} mins completed today</span>
+              </div>
+              <div style="height:8px; background-color:var(--bg-secondary); border-radius:4px; overflow:hidden;">
+                <div style="width:${allocStats.percent}%; height:100%; background:var(--accent-gradient); border-radius:4px;"></div>
+              </div>
+              <div style="display:flex; align-items:center; gap:8px; margin-top:4px;">
+                <span style="font-size:11px; color:var(--text-muted); font-weight:600;">Scheduled Today: ${allocStats.totalMinutes} mins</span>
+                <button class="btn btn-primary btn-sm quick-schedule-alloc-btn" data-proj-id="${proj.id}" style="margin-left:auto; font-size:11px; height:24px; padding:0 8px;">
+                  ⚡ Schedule 1 hr Slot
+                </button>
+              </div>
+            </div>
+          ` : `
+            <div style="display:flex; flex-direction:column; gap:8px;">
+              ${(!proj.subtasks || proj.subtasks.length === 0) ? `
+                <span style="font-size:12px; color:var(--text-muted); font-style:italic;">No tasks added to this project yet. Add one below!</span>
+              ` : proj.subtasks.map((sub, sIdx) => `
+                <div style="display:flex; align-items:center; gap:8px;">
+                  <input type="checkbox" class="subtask-checkbox" data-proj-id="${proj.id}" data-idx="${sIdx}" ${sub.completed ? 'checked' : ''} style="width:16px; height:16px; cursor:pointer;">
+                  <span style="font-size:13px; ${sub.completed ? 'text-decoration:line-through; color:var(--text-muted);' : 'font-weight:600;'}">${sub.name}</span>
+                  <span style="font-size:10px; color:var(--text-muted); font-family:var(--font-mono); margin-left:auto; background:var(--bg-tertiary); padding:2px 6px; border-radius:4px;">~${sub.estimatedMinutes || 30} mins</span>
+                </div>
+              `).join('')}
+            </div>
+            
+            <!-- Add Subtask Input Form -->
+            <div style="display:flex; gap:8px; margin-top:12px;">
+              <input type="text" class="premium-input new-subtask-name" data-proj-id="${proj.id}" placeholder="New subtask name..." style="flex:2; height:28px; font-size:12px; padding:2px 8px;">
+              <input type="number" class="premium-input new-subtask-est" data-proj-id="${proj.id}" placeholder="Est. Mins (e.g. 30)" style="flex:1; height:28px; font-size:12px; padding:2px 8px;">
+              <button class="btn btn-primary btn-sm add-subtask-btn" data-proj-id="${proj.id}" style="height:28px; padding:0 12px; font-size:11px;">Add Task</button>
+            </div>
+          `}
+        </div>
+      </div>
+      
+      <hr style="border:0; border-top:1px solid var(--border-color); margin:0;">
+      
+      <!-- Project Details / Stats Summary -->
+      <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap:16px; font-size:12px;">
+        <div>
+          <span style="color:var(--text-muted);">
+            ${proj.isDailyAllocation ? 'Daily Target Goal:' : 'Estimated Remaining Effort:'}
+          </span>
+          <div style="display:flex; align-items:center; gap:6px; margin-top:4px;">
+            ${proj.isDailyAllocation ? `
+              <input type="number" class="premium-input edit-proj-daily-minutes" data-proj-id="${proj.id}" value="${proj.dailyAllocationMinutes || 60}" style="width:70px; height:24px; padding:2px 6px;">
+              <span>minutes</span>
+            ` : `
+              <input type="number" class="premium-input edit-proj-effort" data-proj-id="${proj.id}" value="${proj.estimatedHours}" style="width:70px; height:24px; padding:2px 6px;">
+              <span>hours</span>
+            `}
+          </div>
+        </div>
+        <div>
+          <span style="color:var(--text-muted);">Available Time:</span>
+          <div style="display:flex; align-items:center; gap:6px; margin-top:4px;">
+            <input type="number" class="premium-input edit-proj-available" data-proj-id="${proj.id}" value="${proj.availableHoursPerDay}" style="width:70px; height:24px; padding:2px 6px;">
+            <span>hours/day</span>
+          </div>
+        </div>
+        <div>
+          <span style="color:var(--text-muted);">Next Milestone:</span>
+          <div style="margin-top:4px;">
+            <input type="text" class="premium-input edit-proj-nextgoal" data-proj-id="${proj.id}" value="${proj.nextGoal || ''}" placeholder="Next goal..." style="width:100%; height:24px; padding:2px 6px;">
+          </div>
+        </div>
+        <div style="display:flex; align-items:flex-end;">
+          <button class="btn btn-primary btn-sm save-proj-details-btn" data-id="${proj.id}" style="height:24px; width:100%; font-size:11px; padding:0; justify-content:center;">Save Details</button>
+        </div>
+      </div>
+
+    </div>
+  `;
+}
+
 export function renderProjects(container, state) {
   // 1. Calculate Priority Scores & Health for all projects
   const activeDate = state.getActiveDate();
@@ -256,7 +346,9 @@ export function renderProjects(container, state) {
           <!-- Project Queue & Health Table -->
           <div class="card">
             <div class="card-title">📊 Project Queue & Health</div>
-            <div style="overflow-x:auto;">
+            
+            <!-- Desktop Table View -->
+            <div class="desktop-only-table-wrapper" style="overflow-x:auto;">
               <table style="width:100%; border-collapse:collapse; min-width:600px;" class="spreadsheet-table">
                 <thead>
                   <tr style="border-bottom:2px solid var(--border-color); text-align:left;">
@@ -319,90 +411,7 @@ export function renderProjects(container, state) {
                       <!-- Collapsible subtasks panel -->
                       <tr id="proj-details-pane-${proj.id}" style="display:none; background-color:rgba(255,255,255,0.01);">
                         <td colspan="6" style="padding:16px; border-bottom:1px solid var(--border-color);">
-                          <div style="display:flex; flex-direction:column; gap:16px;">
-                            
-                            <!-- Subtasks Section -->
-                            <div>
-                              <span style="font-size:12px; font-weight:800; text-transform:uppercase; letter-spacing:0.05em; color:var(--text-secondary);">
-                                ${proj.isDailyAllocation ? 'Daily Allocation Progress' : 'Subtasks & Roadmap'}
-                              </span>
-                              <div style="margin-top:8px;">
-                                ${proj.isDailyAllocation ? `
-                                  <div style="background-color:var(--bg-tertiary); padding:16px; border-radius:var(--radius-sm); border:1px solid var(--border-color); display:flex; flex-direction:column; gap:8px;">
-                                    <div style="display:flex; justify-content:space-between; align-items:center;">
-                                      <span style="font-size:13px; font-weight:700; color:var(--text-primary);">🎯 Daily Goal: ${allocStats.targetMinutes} mins</span>
-                                      <span style="font-size:12px; font-weight:700; color:var(--accent);">${allocStats.completedMinutes} / ${allocStats.targetMinutes} mins completed today</span>
-                                    </div>
-                                    <div style="height:8px; background-color:var(--bg-secondary); border-radius:4px; overflow:hidden;">
-                                      <div style="width:${allocStats.percent}%; height:100%; background:var(--accent-gradient); border-radius:4px;"></div>
-                                    </div>
-                                    <div style="display:flex; align-items:center; gap:8px; margin-top:4px;">
-                                      <span style="font-size:11px; color:var(--text-muted); font-weight:600;">Scheduled Today: ${allocStats.totalMinutes} mins</span>
-                                      <button class="btn btn-primary btn-sm quick-schedule-alloc-btn" data-proj-id="${proj.id}" style="margin-left:auto; font-size:11px; height:24px; padding:0 8px;">
-                                        ⚡ Schedule 1 hr Slot
-                                      </button>
-                                    </div>
-                                  </div>
-                                ` : `
-                                  <div style="display:flex; flex-direction:column; gap:8px;">
-                                    ${(!proj.subtasks || proj.subtasks.length === 0) ? `
-                                      <span style="font-size:12px; color:var(--text-muted); font-style:italic;">No tasks added to this project yet. Add one below!</span>
-                                    ` : proj.subtasks.map((sub, sIdx) => `
-                                      <div style="display:flex; align-items:center; gap:8px;">
-                                        <input type="checkbox" class="subtask-checkbox" data-proj-id="${proj.id}" data-idx="${sIdx}" ${sub.completed ? 'checked' : ''} style="width:16px; height:16px; cursor:pointer;">
-                                        <span style="font-size:13px; ${sub.completed ? 'text-decoration:line-through; color:var(--text-muted);' : 'font-weight:600;'}">${sub.name}</span>
-                                        <span style="font-size:10px; color:var(--text-muted); font-family:var(--font-mono); margin-left:auto; background:var(--bg-tertiary); padding:2px 6px; border-radius:4px;">~${sub.estimatedMinutes || 30} mins</span>
-                                      </div>
-                                    `).join('')}
-                                  </div>
-                                  
-                                  <!-- Add Subtask Input Form -->
-                                  <div style="display:flex; gap:8px; margin-top:12px;">
-                                    <input type="text" class="premium-input new-subtask-name" data-proj-id="${proj.id}" placeholder="New subtask name..." style="flex:2; height:28px; font-size:12px; padding:2px 8px;">
-                                    <input type="number" class="premium-input new-subtask-est" data-proj-id="${proj.id}" placeholder="Est. Mins (e.g. 30)" style="flex:1; height:28px; font-size:12px; padding:2px 8px;">
-                                    <button class="btn btn-primary btn-sm add-subtask-btn" data-proj-id="${proj.id}" style="height:28px; padding:0 12px; font-size:11px;">Add Task</button>
-                                  </div>
-                                `}
-                              </div>
-                            </div>
-                            
-                            <hr style="border:0; border-top:1px solid var(--border-color); margin:0;">
-                            
-                            <!-- Project Details / Stats Summary -->
-                            <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap:16px; font-size:12px;">
-                              <div>
-                                <span style="color:var(--text-muted);">
-                                  ${proj.isDailyAllocation ? 'Daily Target Goal:' : 'Estimated Remaining Effort:'}
-                                </span>
-                                <div style="display:flex; align-items:center; gap:6px; margin-top:4px;">
-                                  ${proj.isDailyAllocation ? `
-                                    <input type="number" class="premium-input edit-proj-daily-minutes" data-proj-id="${proj.id}" value="${proj.dailyAllocationMinutes || 60}" style="width:70px; height:24px; padding:2px 6px;">
-                                    <span>minutes</span>
-                                  ` : `
-                                    <input type="number" class="premium-input edit-proj-effort" data-proj-id="${proj.id}" value="${proj.estimatedHours}" style="width:70px; height:24px; padding:2px 6px;">
-                                    <span>hours</span>
-                                  `}
-                                </div>
-                              </div>
-                              <div>
-                                <span style="color:var(--text-muted);">Available Time:</span>
-                                <div style="display:flex; align-items:center; gap:6px; margin-top:4px;">
-                                  <input type="number" class="premium-input edit-proj-available" data-proj-id="${proj.id}" value="${proj.availableHoursPerDay}" style="width:70px; height:24px; padding:2px 6px;">
-                                  <span>hours/day</span>
-                                </div>
-                              </div>
-                              <div>
-                                <span style="color:var(--text-muted);">Next Milestone:</span>
-                                <div style="margin-top:4px;">
-                                  <input type="text" class="premium-input edit-proj-nextgoal" data-proj-id="${proj.id}" value="${proj.nextGoal || ''}" placeholder="Next goal..." style="width:100%; height:24px; padding:2px 6px;">
-                                </div>
-                              </div>
-                              <div style="display:flex; align-items:flex-end;">
-                                <button class="btn btn-primary btn-sm save-proj-details-btn" data-id="${proj.id}" style="height:24px; width:100%; font-size:11px; padding:0; justify-content:center;">Save Details</button>
-                              </div>
-                            </div>
-
-                          </div>
+                          ${getProjectDetailsContentHTML(proj, state)}
                         </td>
                       </tr>
                     `;
@@ -410,6 +419,66 @@ export function renderProjects(container, state) {
                 </tbody>
               </table>
             </div>
+
+            <!-- Mobile Card View -->
+            <div class="mobile-only-project-list" style="display:none; flex-direction:column; gap:16px;">
+              ${processedProjects.length === 0 ? `
+                <div class="cell-empty" style="text-align:center; padding:20px; color:var(--text-muted);">No projects created yet. Form below!</div>
+              ` : processedProjects.map(proj => {
+                const priorityClass = proj.priority === 'critical' ? 'badge-danger' : proj.priority === 'high' ? 'badge-warning' : 'badge-info';
+                return `
+                  <div class="project-mobile-card" style="background:var(--bg-secondary); border:1px solid var(--border-color); border-radius:var(--radius-md); padding:16px; display:flex; flex-direction:column; gap:12px;" data-proj-row-id="${proj.id}">
+                    <div style="display:flex; justify-content:space-between; align-items:flex-start; gap:8px;">
+                      <div style="min-width:0; flex:1;">
+                        <span style="font-weight:800; font-size:15px; color:var(--text-primary); display:block; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${proj.name}</span>
+                        <span style="font-size:11px; color:var(--text-secondary); display:block; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; margin-top:2px;">${proj.goal || 'No goal set'}</span>
+                      </div>
+                      <span class="badge ${proj.paceClass}" style="font-size:10px; flex-shrink:0;">${proj.paceStatus}</span>
+                    </div>
+
+                    <div style="display:flex; justify-content:space-between; align-items:center; gap:16px; flex-wrap:wrap; font-size:12px; border-top:1px solid var(--border-color); border-bottom:1px solid var(--border-color); padding:8px 0;">
+                      <div style="display:flex; align-items:center; gap:6px;">
+                        <span style="font-weight:700; color:var(--text-secondary);">Score:</span>
+                        <span style="font-family:var(--font-mono); font-weight:800; color:var(--accent);">${proj.priorityScore}</span>
+                        <span class="badge ${priorityClass}" style="font-size:9px; text-transform:uppercase;">${proj.priority}</span>
+                      </div>
+                      <div>
+                        ${proj.deadline ? `
+                          <span style="font-weight:600; color:var(--text-primary);">${proj.deadline}</span>
+                          <span style="font-size:10px; color:var(--text-secondary);">(${proj.daysRemaining}d left)</span>
+                        ` : '<span style="color:var(--text-muted);">No deadline</span>'}
+                      </div>
+                    </div>
+
+                    <div>
+                      <div style="display:flex; justify-content:space-between; align-items:center; font-size:11px; margin-bottom:4px; font-weight:700;">
+                        <span>Progress</span>
+                        <span style="font-family:var(--font-mono);">${proj.progress}%</span>
+                      </div>
+                      <div style="width:100%; height:6px; background-color:var(--bg-tertiary); border-radius:3px; overflow:hidden;">
+                        <div style="width:${proj.progress}%; height:100%; background:var(--accent-gradient);"></div>
+                      </div>
+                    </div>
+
+                    <div style="display:flex; justify-content:flex-end; gap:8px; margin-top:4px;">
+                      <button class="btn btn-secondary btn-sm toggle-proj-details-btn" data-id="${proj.id}" style="padding:6px 12px; font-size:11px; display:flex; align-items:center; gap:4px; height:28px;">
+                        Tasks
+                        <span class="chevron-indicator" style="display:inline-block; transition:transform 0.2s;">▼</span>
+                      </button>
+                      <button class="btn btn-danger btn-sm delete-proj-btn" data-id="${proj.id}" style="padding:6px; width:28px; height:28px; justify-content:center; display:flex; align-items:center;">
+                        ${icons.trash}
+                      </button>
+                    </div>
+
+                    <!-- Collapsible subtasks list for mobile -->
+                    <div id="proj-details-pane-mobile-${proj.id}" style="display:none; border-top:1px dashed var(--border-color); padding-top:12px; margin-top:8px;">
+                      ${getProjectDetailsContentHTML(proj, state)}
+                    </div>
+                  </div>
+                `;
+              }).join('')}
+            </div>
+
           </div>
 
           <!-- Add Project Form -->
@@ -613,10 +682,20 @@ function bindProjectsEvents(container, state, processedProjects) {
     btn.addEventListener('click', () => {
       const id = btn.getAttribute('data-id');
       const pane = container.querySelector(`#proj-details-pane-${id}`);
+      const paneMobile = container.querySelector(`#proj-details-pane-mobile-${id}`);
+      
       if (pane) {
         const isCollapsed = pane.style.display === 'none';
         pane.style.display = isCollapsed ? 'table-row' : 'none';
         btn.innerHTML = isCollapsed ? icons.chevronDown : icons.chevronRight; // flip arrow
+      }
+      if (paneMobile) {
+        const isCollapsed = paneMobile.style.display === 'none';
+        paneMobile.style.display = isCollapsed ? 'block' : 'none';
+        const indicator = btn.querySelector('.chevron-indicator');
+        if (indicator) {
+          indicator.style.transform = isCollapsed ? 'rotate(180deg)' : '';
+        }
       }
     });
   });
