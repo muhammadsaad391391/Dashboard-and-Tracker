@@ -84,6 +84,9 @@ export function renderDashboard(container, state) {
   const totalNNOpportunities = interactedDaysCount * state.nonNegotiables.length;
   const nnEfficiencyPercentage = totalNNOpportunities > 0 ? Math.round((totalNNDone / totalNNOpportunities) * 100) : 0;
 
+  // Total efficiency = average of task completion rate and habit efficiency
+  const totalEfficiency = Math.round((completionPercentage + nnEfficiencyPercentage) / 2);
+
   const avgSatisfaction = ratedDaysCount > 0 ? (satisfactionSum / ratedDaysCount).toFixed(1) : 'N/A';
   const totalProfit = totalRevenue - totalExpenses;
   const currentStreak = calculateStreak(state.days, activeDate);
@@ -96,6 +99,18 @@ export function renderDashboard(container, state) {
 
   // Render Dashboard HTML
   container.innerHTML = `
+    <!-- Streak / Milestone Banner -->
+    <div class="streak-banner" style="margin-bottom: 24px;">
+      <div class="streak-banner-info">
+        <h2 class="streak-banner-title">Welcome to Aether space</h2>
+        <p class="streak-banner-desc">${streakMessage}</p>
+      </div>
+      <div class="streak-banner-badge">
+        <span style="display:inline-block; animation: pulse 1.5s infinite;">${icons.streak}</span>
+        <span>Streak: ${currentStreak} Day${currentStreak === 1 ? '' : 's'}</span>
+      </div>
+      <div class="streak-banner-bg">${currentStreak}</div>
+    </div>
 
     <!-- Motivational Quote -->
     <div class="card" style="background: var(--bg-secondary); border-left: 4px solid var(--accent); margin-bottom: 24px; display:flex; align-items:center; gap:20px; padding:16px 20px;">
@@ -112,6 +127,14 @@ export function renderDashboard(container, state) {
 
     <!-- Overview Stat Cards Grid -->
     <div class="dashboard-grid">
+      <!-- Total Efficiency Card -->
+      <div class="stat-card success" style="background: linear-gradient(135deg, rgba(99, 102, 241, 0.1) 0%, rgba(129, 140, 248, 0.1) 100%); border: 1px solid var(--accent);">
+        <span class="stat-icon">${icons.streak}</span>
+        <span class="stat-label" style="font-weight:800;">Total Efficiency</span>
+        <span class="stat-value" style="color:var(--accent); font-weight:900;">${totalEfficiency}%</span>
+        <span class="stat-desc">Overall average efficiency starting tomorrow</span>
+      </div>
+
       <div class="stat-card success">
         <span class="stat-icon">${icons.planner}</span>
         <span class="stat-label">Completion Rate</span>
@@ -259,6 +282,11 @@ export function renderDashboard(container, state) {
       </div>
     </div>
     
+    <!-- Disclaimer info at the end of the dashboard -->
+    <div style="font-size: 11px; text-align: center; color: var(--text-secondary); margin-top: 32px; padding: 16px 12px 0 12px; border-top: 1px solid var(--border-color); width: 100%; font-weight: 600; line-height: 1.4;">
+      ℹ️ Note: All statistics (Total Efficiency, Completion Rate, Schedule Accuracy, Habit Efficiency, Net Profit, and Savings) represent overall/cumulative metrics calculated starting from August 31, 2026.
+    </div>
+
     <!-- Modal placeholders for missed reasons and actual completion times -->
     <div id="dashboard-modal-container"></div>
   `;

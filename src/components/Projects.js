@@ -282,33 +282,7 @@ export function renderProjects(container, state) {
         <!-- Left Column: Priority Trackers -->
         <div style="display:flex; flex-direction:column; gap:24px;">
           
-          <!-- ⚡ Hero Card: What Should I Do Now? -->
-          <div class="card streak-banner" style="margin-bottom:0; box-shadow:var(--glass-shadow); min-height: 160px; display:flex; justify-content:space-between; flex-direction:row; align-items:center;">
-            <div style="display:flex; flex-direction:column; gap:8px; flex:1; min-width:0; padding-right:16px;">
-              <span style="font-size:11px; text-transform:uppercase; font-weight:800; letter-spacing:0.1em; color:rgba(255,255,255,0.7);">⚡ Recommended Next Action</span>
-              ${recommendedTask ? `
-                <h2 style="font-size:24px; font-weight:800; color:white; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;" title="${recommendedTask.name}">${recommendedTask.name}</h2>
-                <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap; font-size:12px; color:rgba(255,255,255,0.85); font-weight:600;">
-                  <span>Project: <strong>${recommendedProject.name}</strong></span>
-                  <span>•</span>
-                  <span>Est: <strong>${recommendedTask.estimatedMinutes || 30} mins</strong></span>
-                  <span>•</span>
-                  <span class="badge ${recommendedProject.paceClass}" style="color:white; background:rgba(255,255,255,0.15); border:1px solid rgba(255,255,255,0.2);">${recommendedProject.paceStatus}</span>
-                </div>
-                <p style="font-size:12px; color:rgba(255,255,255,0.75); margin-top:8px; font-style:italic;">
-                  <strong>Why this is #1:</strong> This project has a priority score of ${recommendedProject.priorityScore}/100. ${recommendedProject.paceStatus === 'Behind' ? 'You are currently behind the required pace to meet your deadline.' : 'It requires consistent progress to stay on track.'}
-                </p>
-              ` : `
-                <h2 style="font-size:20px; font-weight:800; color:white;">No pending actions!</h2>
-                <p style="font-size:12px; color:rgba(255,255,255,0.75);">Add tasks to your projects or start a new project to generate priority suggestions.</p>
-              `}
-            </div>
-            ${recommendedTask ? `
-              <button class="btn btn-secondary" id="action-start-recommended-task-btn" data-proj-id="${recommendedProject.id}" data-task-id="${recommendedTask.id}" style="color:var(--accent); background-color:white; border:none; padding:10px 16px; font-weight:700; border-radius:var(--radius-sm); white-space:nowrap; box-shadow:0 4px 12px rgba(0,0,0,0.1);">
-                Start Task
-              </button>
-            ` : ''}
-          </div>
+
 
           <!-- Daily Available Time Planner Card -->
           <div class="card">
@@ -613,69 +587,7 @@ function bindProjectsEvents(container, state, processedProjects) {
     });
   }
 
-  // C. Start Recommended Task
-  const startRecBtn = container.querySelector('#action-start-recommended-task-btn');
-  if (startRecBtn) {
-    startRecBtn.addEventListener('click', async () => {
-      const projId = Number(startRecBtn.getAttribute('data-proj-id'));
-      const taskId = startRecBtn.getAttribute('data-task-id');
-      
-      const project = state.projects.find(p => p.id === projId);
-      if (!project) return;
-      
-      const taskIndex = project.subtasks.findIndex(s => s.id === taskId);
-      if (taskIndex === -1) return;
-      
-      const task = project.subtasks[taskIndex];
-      
-      // Load active day
-      const activeDate = state.getActiveDate();
-      const activeDay = state.days.find(d => d.date === activeDate);
-      if (!activeDay) return;
-      
-      // Find the first free time slot in activeDay
-      const firstFreeSlot = state.timeIntervals.find(slot => {
-        return !activeDay.schedule.some(item => item.plannedTime === slot);
-      });
-      
-      if (!firstFreeSlot) {
-        alert("No free time slots available on your schedule for today! Free up a slot in the Daily Planner first.");
-        return;
-      }
-      
-      // Add task to activeDay schedule
-      const newTask = {
-        id: 't-' + Date.now(),
-        name: `${project.name}: ${task.name}`,
-        plannedTime: firstFreeSlot,
-        status: 'pending',
-        missedReason: '',
-        actualTime: '',
-        type: 'general'
-      };
-      
-      activeDay.schedule.push(newTask);
-      // Sort schedule
-      activeDay.schedule.sort((a, b) => {
-        const idxA = state.timeIntervals.indexOf(a.plannedTime);
-        const idxB = state.timeIntervals.indexOf(b.plannedTime);
-        return idxA - idxB;
-      });
-      
-      // Update day database
-      await state.updateDay(activeDay.date, { schedule: activeDay.schedule });
-      
-      // Mark subtask as completed in the project
-      project.subtasks[taskIndex].completed = true;
-      project.lastWorkedOn = Date.now();
-      await state.updateProject(project.id, { subtasks: project.subtasks, lastWorkedOn: project.lastWorkedOn });
-      
-      confetti({ particleCount: 60, spread: 40 });
-      alert(`Scheduled "${task.name}" at ${firstFreeSlot} today!`);
-      
-      renderProjects(container, state);
-    });
-  }
+
 
   // D. Collapsible project details row triggers
   container.querySelectorAll('.toggle-proj-details-btn').forEach(btn => {
