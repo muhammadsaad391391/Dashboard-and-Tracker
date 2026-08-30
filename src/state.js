@@ -170,10 +170,10 @@ class AppState {
       // Seed DB if it's the first run
       await seedDatabase();
 
-      // Force database reset migration to version 3
-      const resetVersionSetting = await db.settings.get('db_reset_v3');
+      // Force database reset migration to version 4
+      const resetVersionSetting = await db.settings.get('db_reset_v4');
       const resetVersion = resetVersionSetting ? resetVersionSetting.value : 0;
-      if (resetVersion < 3) {
+      if (resetVersion < 4) {
         if (window.setAetherLoaderText) window.setAetherLoaderText('Executing forced clean database reset...');
         
         // Clear tables
@@ -220,7 +220,7 @@ class AppState {
         await db.settings.put({ key: 'time_intervals', value: newSlots });
         
         // Set reset version setting
-        await db.settings.put({ key: 'db_reset_v3', value: 3 });
+        await db.settings.put({ key: 'db_reset_v4', value: 4 });
         
         // Force push the empty database state to the cloud to overwrite other devices!
         this.syncCode = 'global_shared_backup';
