@@ -193,10 +193,9 @@ class AppState {
       }
       
       if (window.setAetherLoaderText) window.setAetherLoaderText('Loading active theme...');
-      // Load theme from settings
-      const themeSetting = await db.settings.get('theme');
-      this.theme = themeSetting ? themeSetting.value : 'light';
-      document.documentElement.className = this.theme;
+      // Always start in light theme by default when the app opens, as requested
+      this.theme = 'light';
+      document.documentElement.className = 'light';
 
       if (window.setAetherLoaderText) window.setAetherLoaderText('Loading current view...');
       // Load active view
