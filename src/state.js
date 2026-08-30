@@ -679,7 +679,7 @@ class AppState {
     const targetCode = code || this.syncCode;
     if (!targetCode) return false;
     try {
-      const response = await fetch(`/api/sync?code=${targetCode}`);
+      const response = await fetch(`/api/sync?code=${targetCode}&t=${Date.now()}`, { cache: 'no-store' });
       if (!response.ok) {
         if (response.status === 404) {
           // If code doesn't exist yet, we push our current local state as the starting point!
@@ -748,7 +748,7 @@ class AppState {
   async pollCloudUpdates() {
     if (!this.syncEnabled || !this.syncCode || !this.initialized) return;
     try {
-      const response = await fetch(`/api/sync?code=${this.syncCode}`);
+      const response = await fetch(`/api/sync?code=${this.syncCode}&t=${Date.now()}`, { cache: 'no-store' });
       if (response.ok) {
         const data = await response.json();
         if (data && data.timestamp && data.timestamp > this.lastSyncTimestamp) {

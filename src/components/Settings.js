@@ -61,6 +61,8 @@ export function renderSettings(container, state) {
               <input type="text" class="premium-input interval-edit-input" id="interval-edit-${idx}" value="${interval}" style="display:none; flex:1; max-width:140px; font-family:var(--font-mono); font-size:13px; padding: 4px 8px;">
               
               <div style="display:flex; gap:4px;">
+                <button class="btn btn-secondary btn-sm move-up-interval-btn" data-index="${idx}" style="padding:6px; height:28px; width:28px; justify-content:center;" ${idx === 0 ? 'disabled style="opacity:0.3; pointer-events:none;"' : ''} title="Move Up">▲</button>
+                <button class="btn btn-secondary btn-sm move-down-interval-btn" data-index="${idx}" style="padding:6px; height:28px; width:28px; justify-content:center;" ${idx === state.timeIntervals.length - 1 ? 'disabled style="opacity:0.3; pointer-events:none;"' : ''} title="Move Down">▼</button>
                 <button class="btn btn-secondary btn-sm edit-interval-btn" data-index="${idx}" style="padding:6px; height:28px; width:28px; justify-content:center;">${icons.edit}</button>
                 <button class="btn btn-primary btn-sm save-interval-btn" data-index="${idx}" style="display:none; background:var(--success); padding:6px; height:28px; width:28px; justify-content:center;">${icons.completed}</button>
                 <button class="btn btn-danger btn-sm delete-interval-btn" data-index="${idx}" style="padding:6px; height:28px; width:28px; justify-content:center;">${icons.trash}</button>
@@ -274,6 +276,34 @@ export function renderSettings(container, state) {
       if (confirm('Delete this time interval slot? This will hide tasks scheduled at this slot across grid views.')) {
         const updated = state.timeIntervals.filter((_, i) => i !== idx);
         await state.updateTimeIntervals(updated);
+        renderSettings(container, state);
+      }
+    });
+  });
+
+  container.querySelectorAll('.move-up-interval-btn').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      const idx = parseInt(btn.getAttribute('data-index'));
+      if (idx > 0) {
+        const intervals = [...state.timeIntervals];
+        const temp = intervals[idx];
+        intervals[idx] = intervals[idx - 1];
+        intervals[idx - 1] = temp;
+        await state.updateTimeIntervals(intervals);
+        renderSettings(container, state);
+      }
+    });
+  });
+
+  container.querySelectorAll('.move-down-interval-btn').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      const idx = parseInt(btn.getAttribute('data-index'));
+      if (idx < state.timeIntervals.length - 1) {
+        const intervals = [...state.timeIntervals];
+        const temp = intervals[idx];
+        intervals[idx] = intervals[idx + 1];
+        intervals[idx + 1] = temp;
+        await state.updateTimeIntervals(intervals);
         renderSettings(container, state);
       }
     });

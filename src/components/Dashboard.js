@@ -23,6 +23,9 @@ export function renderDashboard(container, state) {
   let totalExpenses = 0;
   let totalSavings = 0;
 
+  let interactedDaysCount = 0;
+  let totalNNDone = 0;
+
   state.days.forEach(day => {
     // Tasks stats
     if (day.schedule) {
@@ -39,8 +42,24 @@ export function renderDashboard(container, state) {
     // Satisfaction average (ignoring default/unrated unless they have inputs)
     const hasInteracted = (day.schedule && day.schedule.some(t => t.status !== 'pending')) ||
                           (day.satisfaction && day.satisfaction.score !== 5 && day.satisfaction.score !== null) ||
-                          (day.finance && (day.finance.revenue > 0 || day.finance.expenses > 0 || day.finance.savings > 0));
+                          (day.finance && (day.finance.revenue > 0 || day.finance.expenses > 0 || day.finance.savings > 0)) ||
+                          (day.nonNegotiables && Object.values(day.nonNegotiables).some(v => v !== 'pending'));
     
+    if (hasInteracted) {
+      interactedDaysCount++;
+      
+      // Calculate non-negotiables completion count
+      if (day.nonNegotiables) {
+        Object.keys(day.nonNegotiables).forEach(id => {
+          if (day.nonNegotiables[id] === 'done') {
+            totalNNDone++;
+          } else if (day.nonNegotiables[id] === 'partial') {
+            totalNNDone += 0.5;
+          }
+        });
+      }
+    }
+
     if (day.satisfaction && day.satisfaction.score !== null && hasInteracted) {
       satisfactionSum += day.satisfaction.score;
       ratedDaysCount++;
@@ -54,7 +73,17 @@ export function renderDashboard(container, state) {
     }
   });
 
-  const completionPercentage = totalTasks > 0 ? Math.round((completedTasksCount / totalTasks) * 100) : 0;
+  // Calculate completion percentage over ALL time slots across active days (including unscheduled ones)
+  const totalSlotOpportunities = interactedDaysCount * state.timeIntervals.length;
+  const completionPercentage = totalSlotOpportunities > 0 ? Math.round((completedTasksCount / totalSlotOpportunities) * 100) : 0;
+  
+  // Schedule accuracy = completed / scheduled tasks
+  const scheduleAccuracy = totalTasks > 0 ? Math.round((completedTasksCount / totalTasks) * 100) : 0;
+  
+  // Non-negotiables efficiency
+  const totalNNOpportunities = interactedDaysCount * state.nonNegotiables.length;
+  const nnEfficiencyPercentage = totalNNOpportunities > 0 ? Math.round((totalNNDone / totalNNOpportunities) * 100) : 0;
+
   const avgSatisfaction = ratedDaysCount > 0 ? (satisfactionSum / ratedDaysCount).toFixed(1) : 'N/A';
   const totalProfit = totalRevenue - totalExpenses;
   const currentStreak = calculateStreak(state.days, activeDate);
@@ -99,21 +128,21 @@ export function renderDashboard(container, state) {
         <span class="stat-icon">${icons.planner}</span>
         <span class="stat-label">Completion Rate</span>
         <span class="stat-value">${completionPercentage}%</span>
-        <span class="stat-desc">Target: 80% to maintain green status</span>
+        <span class="stat-desc">Of all daily time intervals completed</span>
       </div>
 
       <div class="stat-card success">
         <span class="stat-icon">${icons.completed}</span>
-        <span class="stat-label">Tasks Completed</span>
-        <span class="stat-value">${completedTasksCount}</span>
-        <span class="stat-desc">From daily planner schedules</span>
+        <span class="stat-label">Schedule Accuracy</span>
+        <span class="stat-value">${scheduleAccuracy}%</span>
+        <span class="stat-desc">Of scheduled tasks successfully ticked</span>
       </div>
 
-      <div class="stat-card danger">
-        <span class="stat-icon">${icons.missed}</span>
-        <span class="stat-label">Tasks Missed</span>
-        <span class="stat-value">${missedTasksCount}</span>
-        <span class="stat-desc">Explanations stored in database</span>
+      <div class="stat-card warning">
+        <span class="stat-icon">${icons.streak}</span>
+        <span class="stat-label">Habit Efficiency</span>
+        <span class="stat-value" style="color:var(--accent-light);">${nnEfficiencyPercentage}%</span>
+        <span class="stat-desc">Non-Negotiable essentials ticked</span>
       </div>
 
       <div class="stat-card warning">
@@ -129,7 +158,7 @@ export function renderDashboard(container, state) {
         <span class="stat-value" style="color: ${totalProfit >= 0 ? 'var(--success)' : 'var(--danger)'};">
           $${totalProfit.toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
         </span>
-        <span class="stat-desc">Revenue: $${totalRevenue.toLocaleString()} | Exp: $${totalExpenses.toLocaleString()}</span>
+        <span class="stat-desc">Rev: $${totalRevenue.toLocaleString()} | Exp: $${totalExpenses.toLocaleString()}</span>
       </div>
 
       <div class="stat-card earnings">
