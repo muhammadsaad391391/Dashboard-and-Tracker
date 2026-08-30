@@ -269,8 +269,7 @@ button, input, select, textarea {
   align-items: center;
   justify-content: space-between;
   padding: 0 40px;
-  position: sticky;
-  top: 0;
+  position: relative;
   z-index: 90;
   backdrop-filter: blur(10px);
   background-color: rgba(9, 9, 11, 0.7);
@@ -362,6 +361,8 @@ html.light .header-container {
   padding: 40px;
   flex: 1;
   min-width: 0;
+  width: 100%;
+  overflow-x: hidden;
 }
 
 /* Premium Glass Cards */

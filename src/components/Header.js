@@ -46,11 +46,14 @@ export function renderHeader(container, state) {
       <div style="display:flex; flex-direction:column;">
         <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
           <span class="header-subtitle" style="white-space: nowrap;">Focus Day:</span>
-          <div style="display:flex; align-items:center; gap:4px;">
+          <div style="display:flex; align-items:center; gap:4px; flex-wrap:wrap;">
             <button class="btn btn-secondary btn-sm" id="header-prev-day-btn" style="padding: 2px 6px; font-size: 11px; height: 22px; display:flex; align-items:center; justify-content:center;">◀</button>
-            <input type="date" id="global-header-date-input" value="${activeDate}" style="font-family:var(--font-sans); font-weight:700; padding: 2px 8px; font-size:11px; height:22px; border-radius:4px; border:1px solid var(--border-color); background-color:var(--bg-tertiary); cursor:pointer; outline:none; color:var(--text-primary);">
+            <input type="date" id="global-header-date-input" value="${activeDate}" style="font-family:var(--font-sans); font-weight:700; padding: 2px 8px; font-size:11px; height:22px; border-radius:4px; border:1px solid var(--border-color); background-color:var(--bg-tertiary); cursor:pointer; outline:none; color:var(--text-primary); width:110px;">
             <button class="btn btn-secondary btn-sm" id="header-next-day-btn" style="padding: 2px 6px; font-size: 11px; height: 22px; display:flex; align-items:center; justify-content:center;">▶</button>
             <button class="btn btn-secondary btn-sm" id="header-today-btn" style="padding: 2px 8px; font-size: 11px; height: 22px; display:flex; align-items:center; justify-content:center; margin-left: 4px;">Today</button>
+            <button class="btn btn-primary btn-sm" id="header-sync-btn" style="padding: 2px 8px; font-size: 11px; height: 22px; display:flex; align-items:center; justify-content:center; gap: 4px; margin-left: 4px; background:linear-gradient(135deg, var(--accent) 0%, #06b6d4 100%); border:none; color:white; font-weight:700; border-radius:4px; cursor:pointer;" title="Sync Device Database">
+              ${icons.sync || '🔄'} Sync
+            </button>
           </div>
           <span class="header-subtitle" style="opacity: 0.6; margin-left: 4px;">— ${dateLabel}</span>
         </div>
@@ -167,6 +170,28 @@ export function renderHeader(container, state) {
       const nextStr = state.getTodayDateStr();
       await state.setActiveDate(nextStr);
       state.setExpandedDayDate(nextStr);
+    });
+  }
+
+  const syncBtn = container.querySelector('#header-sync-btn');
+  if (syncBtn) {
+    syncBtn.addEventListener('click', async () => {
+      syncBtn.disabled = true;
+      const originalHtml = syncBtn.innerHTML;
+      syncBtn.innerHTML = `⏳ Syncing...`;
+      try {
+        await state.pullFromCloud();
+        await state.pushToCloud();
+        if (window.confetti) {
+          window.confetti({ particleCount: 30, spread: 20 });
+        }
+        alert("✨ Synced successfully! All device schedules and non-negotiables are up to date.");
+      } catch (err) {
+        alert("❌ Sync failed: " + err.message);
+      } finally {
+        syncBtn.disabled = false;
+        syncBtn.innerHTML = originalHtml;
+      }
     });
   }
 
