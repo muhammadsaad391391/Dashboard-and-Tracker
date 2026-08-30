@@ -54,6 +54,9 @@ export function renderHeader(container, state) {
             <button class="btn btn-primary btn-sm" id="header-sync-btn" style="padding: 2px 8px; font-size: 11px; height: 22px; display:flex; align-items:center; justify-content:center; gap: 4px; margin-left: 4px; background:linear-gradient(135deg, var(--accent) 0%, #06b6d4 100%); border:none; color:white; font-weight:700; border-radius:4px; cursor:pointer;" title="Sync Device Database">
               ${icons.sync || '🔄'} Sync
             </button>
+            <button class="btn btn-secondary btn-sm" id="header-reload-btn" style="padding: 2px 8px; font-size: 11px; height: 22px; display:flex; align-items:center; justify-content:center; gap: 4px; margin-left: 4px; cursor:pointer;" title="Reload Webpage">
+              ${icons.reset || '🔄'} Reload
+            </button>
           </div>
           <span class="header-subtitle" style="opacity: 0.6; margin-left: 4px;">— ${dateLabel}</span>
         </div>
@@ -192,6 +195,13 @@ export function renderHeader(container, state) {
         syncBtn.disabled = false;
         syncBtn.innerHTML = originalHtml;
       }
+    });
+  }
+
+  const reloadBtn = container.querySelector('#header-reload-btn');
+  if (reloadBtn) {
+    reloadBtn.addEventListener('click', () => {
+      window.location.reload();
     });
   }
 
