@@ -145,26 +145,62 @@ window.showToast = showToast; // Bind globally
 
 // Global cell selection state tracking & highlighting
 export function updateSelectionHighlights() {
-  document.querySelectorAll('.cell-task').forEach(c => c.classList.remove('selected-cell'));
+  document.querySelectorAll('.cell-task').forEach(c => {
+    c.classList.remove('selected-cell');
+    const existingHandle = c.querySelector('.selection-handle');
+    if (existingHandle) existingHandle.remove();
+  });
   
   if (state.selectedCells && state.selectedCells.length > 0) {
     state.selectedCells.forEach(cellData => {
       const selector = `.cell-task[data-date="${cellData.date}"][data-time="${cellData.time}"]`;
       document.querySelectorAll(selector).forEach(c => c.classList.add('selected-cell'));
     });
+
+    // Find the bottom-right cell of the selection to anchor selection drag-handle
+    let maxCol = -1;
+    let maxRow = -1;
+    state.selectedCells.forEach(cell => {
+      if (cell.colIdx > maxCol) maxCol = cell.colIdx;
+      if (cell.rowIdx > maxRow) maxRow = cell.rowIdx;
+    });
+
+    if (maxCol !== -1 && maxRow !== -1) {
+      const targetCell = document.querySelector(`.cell-task[data-col-idx="${maxCol}"][data-row-idx="${maxRow}"]`);
+      if (targetCell) {
+        const handle = document.createElement('div');
+        handle.className = 'selection-handle';
+        handle.style.cssText = `
+          position: absolute;
+          right: -5px;
+          bottom: -5px;
+          width: 12px;
+          height: 12px;
+          background-color: var(--accent);
+          border: 2px solid var(--bg-secondary);
+          border-radius: 50%;
+          cursor: nwse-resize;
+          z-index: 100;
+          box-shadow: 0 2px 4px rgba(0,0,0,0.25);
+          touch-action: none;
+        `;
+        targetCell.appendChild(handle);
+      }
+    }
   }
 }
 window.updateSelectionHighlights = updateSelectionHighlights;
 
 let isSelecting = false;
+let isDraggingHandle = false;
 
 // Selection Mousedown Delegation
 document.addEventListener('mousedown', (e) => {
   const cell = e.target.closest('.cell-task');
   if (!cell) return;
   
-  // Ignore clicks inside inputs, overlays, select boxes, or action buttons
-  if (e.target.tagName === 'INPUT' || e.target.closest('.status-popup') || e.target.closest('button') || e.target.closest('select')) {
+  // Ignore clicks inside inputs, overlays, select boxes, action buttons, or selection handles
+  if (e.target.tagName === 'INPUT' || e.target.closest('.status-popup') || e.target.closest('button') || e.target.closest('select') || e.target.closest('.selection-handle')) {
     return;
   }
   
@@ -176,6 +212,10 @@ document.addEventListener('mousedown', (e) => {
   const time = cell.getAttribute('data-time');
   const taskId = cell.getAttribute('data-task-id') || null;
 
+  // Track if this cell was already selected prior to this click sequence
+  const wasSelectedBefore = state.selectedCells.some(c => c.date === date && c.time === time);
+  cell.setAttribute('data-was-selected-before', wasSelectedBefore ? 'true' : 'false');
+
   if (e.ctrlKey || e.metaKey) {
     const existsIdx = state.selectedCells.findIndex(c => c.date === date && c.time === time);
     if (existsIdx !== -1) {
@@ -184,6 +224,7 @@ document.addEventListener('mousedown', (e) => {
       state.selectedCells.push({ date, time, taskId, colIdx, rowIdx });
     }
     state.selectionAnchor = { date, time, colIdx, rowIdx };
+    state.selectionCursor = { date, time, colIdx, rowIdx };
   } else if (e.shiftKey && state.selectionAnchor) {
     const anchorCol = state.selectionAnchor.colIdx;
     const anchorRow = state.selectionAnchor.rowIdx;
@@ -208,9 +249,11 @@ document.addEventListener('mousedown', (e) => {
       }
     });
     state.selectedCells = newSelection;
+    state.selectionCursor = { date, time, colIdx, rowIdx };
   } else {
     state.selectedCells = [{ date, time, taskId, colIdx, rowIdx }];
     state.selectionAnchor = { date, time, colIdx, rowIdx };
+    state.selectionCursor = { date, time, colIdx, rowIdx };
     isSelecting = true;
   }
   updateSelectionHighlights();
@@ -224,6 +267,10 @@ document.addEventListener('mouseover', (e) => {
 
   const colIdx = parseInt(cell.getAttribute('data-col-idx'));
   const rowIdx = parseInt(cell.getAttribute('data-row-idx'));
+  const date = cell.getAttribute('data-date');
+  const time = cell.getAttribute('data-time');
+
+  state.selectionCursor = { date, time, colIdx, rowIdx };
 
   const anchorCol = state.selectionAnchor.colIdx;
   const anchorRow = state.selectionAnchor.rowIdx;
@@ -256,14 +303,83 @@ document.addEventListener('mouseup', () => {
   isSelecting = false;
 });
 
-// Click outside grid cells clears selection
+// Click outside grid cells clears selection, but second-click on same cell opens context menu
 document.addEventListener('click', (e) => {
-  if (e.target.closest('.cell-task') || e.target.closest('.status-popup') || e.target.closest('.modal-content') || e.target.closest('#inline-cell-input') || e.target.closest('#inline-study-input') || e.target.closest('#inline-etsy-input') || e.target.closest('.quick-add-task-btn') || e.target.closest('.inline-dashboard-input') || e.target.closest('#spreadsheet-context-menu')) {
+  const cell = e.target.closest('.cell-task');
+  if (cell) {
+    const wasSelectedBefore = cell.getAttribute('data-was-selected-before') === 'true';
+    cell.removeAttribute('data-was-selected-before');
+    
+    if (wasSelectedBefore && !e.target.closest('.selection-handle')) {
+      // Toggle Context menu directly on mobile/touch selection tapping
+      showSpreadsheetContextMenu(e);
+    }
+    return;
+  }
+
+  // Avoid clearing when clicking options, wrappers, menus, modals, or handles
+  if (e.target.closest('.spreadsheet-container') || e.target.closest('.status-popup') || e.target.closest('.modal-content') || e.target.closest('#inline-cell-input') || e.target.closest('#inline-study-input') || e.target.closest('#inline-etsy-input') || e.target.closest('.quick-add-task-btn') || e.target.closest('.inline-dashboard-input') || e.target.closest('#spreadsheet-context-menu') || e.target.closest('.selection-handle')) {
     return;
   }
   state.selectedCells = [];
   state.selectionAnchor = null;
+  state.selectionCursor = null;
   updateSelectionHighlights();
+});
+
+// Mobile/Touch Drag handles gestures support
+document.addEventListener('touchstart', (e) => {
+  const handle = e.target.closest('.selection-handle');
+  if (!handle) return;
+  
+  e.preventDefault();
+  isDraggingHandle = true;
+}, { passive: false });
+
+document.addEventListener('touchmove', (e) => {
+  if (!isDraggingHandle || !state.selectionAnchor) return;
+  
+  e.preventDefault();
+  const touch = e.touches[0];
+  const targetEl = document.elementFromPoint(touch.clientX, touch.clientY);
+  const cell = targetEl ? targetEl.closest('.cell-task') : null;
+  if (!cell) return;
+
+  const colIdx = parseInt(cell.getAttribute('data-col-idx'));
+  const rowIdx = parseInt(cell.getAttribute('data-row-idx'));
+  const date = cell.getAttribute('data-date');
+  const time = cell.getAttribute('data-time');
+
+  state.selectionCursor = { date, time, colIdx, rowIdx };
+
+  const anchorCol = state.selectionAnchor.colIdx;
+  const anchorRow = state.selectionAnchor.rowIdx;
+
+  const minCol = Math.min(anchorCol, colIdx);
+  const maxCol = Math.max(anchorCol, colIdx);
+  const minRow = Math.min(anchorRow, rowIdx);
+  const maxRow = Math.max(anchorRow, rowIdx);
+
+  const newSelection = [];
+  document.querySelectorAll('.cell-task').forEach(c => {
+    const cCol = parseInt(c.getAttribute('data-col-idx'));
+    const cRow = parseInt(c.getAttribute('data-row-idx'));
+    if (cCol >= minCol && cCol <= maxCol && cRow >= minRow && cRow <= maxRow) {
+      newSelection.push({
+        date: c.getAttribute('data-date'),
+        time: c.getAttribute('data-time'),
+        taskId: c.getAttribute('data-task-id') || null,
+        colIdx: cCol,
+        rowIdx: cRow
+      });
+    }
+  });
+  state.selectedCells = newSelection;
+  updateSelectionHighlights();
+}, { passive: false });
+
+document.addEventListener('touchend', () => {
+  isDraggingHandle = false;
 });
 
 // Reusable Copy method (copies structure and resets status to pending)
@@ -517,6 +633,76 @@ function showSpreadsheetContextMenu(e) {
 
 document.addEventListener('keydown', async (e) => {
   if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
+
+  // Arrow keys spreadsheet cell navigation & Shift + Arrow expansion
+  const arrowKeys = ['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'];
+  if (arrowKeys.includes(e.key) && state.selectedCells && state.selectedCells.length > 0) {
+    e.preventDefault();
+
+    // Ensure we have selectionAnchor and selectionCursor references
+    if (!state.selectionCursor && state.selectedCells.length > 0) {
+      const last = state.selectedCells[state.selectedCells.length - 1];
+      state.selectionCursor = { colIdx: last.colIdx, rowIdx: last.rowIdx, date: last.date, time: last.time };
+    }
+    if (!state.selectionAnchor && state.selectedCells.length > 0) {
+      const first = state.selectedCells[0];
+      state.selectionAnchor = { colIdx: first.colIdx, rowIdx: first.rowIdx, date: first.date, time: first.time };
+    }
+
+    let nextCol = state.selectionCursor.colIdx;
+    let nextRow = state.selectionCursor.rowIdx;
+
+    if (e.key === 'ArrowUp') nextRow--;
+    if (e.key === 'ArrowDown') nextRow++;
+    if (e.key === 'ArrowLeft') nextCol--;
+    if (e.key === 'ArrowRight') nextCol++;
+
+    const nextCell = document.querySelector(`.cell-task[data-col-idx="${nextCol}"][data-row-idx="${nextRow}"]`);
+    if (nextCell) {
+      const nextDate = nextCell.getAttribute('data-date');
+      const nextTime = nextCell.getAttribute('data-time');
+      const nextTaskId = nextCell.getAttribute('data-task-id') || null;
+
+      state.selectionCursor = { colIdx: nextCol, rowIdx: nextRow, date: nextDate, time: nextTime };
+
+      if (e.shiftKey) {
+        // Expand selection range from Anchor to Cursor
+        const anchorCol = state.selectionAnchor.colIdx;
+        const anchorRow = state.selectionAnchor.rowIdx;
+
+        const minCol = Math.min(anchorCol, nextCol);
+        const maxCol = Math.max(anchorCol, nextCol);
+        const minRow = Math.min(anchorRow, nextRow);
+        const maxRow = Math.max(anchorRow, nextRow);
+
+        const newSelection = [];
+        document.querySelectorAll('.cell-task').forEach(c => {
+          const cCol = parseInt(c.getAttribute('data-col-idx'));
+          const cRow = parseInt(c.getAttribute('data-row-idx'));
+          if (cCol >= minCol && cCol <= maxCol && cRow >= minRow && cRow <= maxRow) {
+            newSelection.push({
+              date: c.getAttribute('data-date'),
+              time: c.getAttribute('data-time'),
+              taskId: c.getAttribute('data-task-id') || null,
+              colIdx: cCol,
+              rowIdx: cRow
+            });
+          }
+        });
+        state.selectedCells = newSelection;
+      } else {
+        // Move selection to a single new cell
+        state.selectionAnchor = { colIdx: nextCol, rowIdx: nextRow, date: nextDate, time: nextTime };
+        state.selectedCells = [{ date: nextDate, time: nextTime, taskId: nextTaskId, colIdx: nextCol, rowIdx: nextRow }];
+      }
+
+      updateSelectionHighlights();
+
+      // Scroll nextCell into view if it overflows the scrolling element container
+      nextCell.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+    }
+    return;
+  }
 
   const isEnter = e.key === 'Enter';
   if (isEnter && state.selectedCells && state.selectedCells.length === 1) {
