@@ -96,18 +96,6 @@ export function renderDashboard(container, state) {
 
   // Render Dashboard HTML
   container.innerHTML = `
-    <!-- Streak / Milestone Banner -->
-    <div class="streak-banner">
-      <div class="streak-banner-info">
-        <h2 class="streak-banner-title">Welcome to Aether space</h2>
-        <p class="streak-banner-desc">${streakMessage}</p>
-      </div>
-      <div class="streak-banner-badge">
-        <span style="display:inline-block; animation: pulse 1.5s infinite;">${icons.streak}</span>
-        <span>Streak: ${currentStreak} Day${currentStreak === 1 ? '' : 's'}</span>
-      </div>
-      <div class="streak-banner-bg">${currentStreak}</div>
-    </div>
 
     <!-- Motivational Quote -->
     <div class="card" style="background: var(--bg-secondary); border-left: 4px solid var(--accent); margin-bottom: 24px; display:flex; align-items:center; gap:20px; padding:16px 20px;">

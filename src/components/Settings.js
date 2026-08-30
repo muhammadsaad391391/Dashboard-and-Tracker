@@ -132,7 +132,18 @@ export function renderSettings(container, state) {
       </p>
     </div>
 
-
+    <!-- System Maintenance -->
+    <div class="card" style="margin-bottom: 24px;">
+      <div class="card-title">⚙️ System Maintenance</div>
+      <p style="font-size: 13px; color: var(--text-secondary); margin-bottom: 16px;">
+        Forces the webpage to refresh and pull the newest sync data directly from the cloud backend.
+      </p>
+      <div style="display:flex; gap:12px; flex-wrap:wrap;">
+        <button class="btn btn-secondary" id="settings-reload-btn" style="display:flex; align-items:center; gap:6px; cursor:pointer;">
+          ${icons.reset || '🔄'} Reload App
+        </button>
+      </div>
+    </div>
 
     <!-- System Control Danger Zone -->
     <div class="card" style="border-color: var(--danger-border); background-color: rgba(239, 68, 68, 0.02)">
@@ -154,6 +165,14 @@ export function renderSettings(container, state) {
       </div>
     </div>
   `;
+
+  // --- Reload Website Event handler ---
+  const settingsReloadBtn = container.querySelector('#settings-reload-btn');
+  if (settingsReloadBtn) {
+    settingsReloadBtn.addEventListener('click', () => {
+      window.location.reload();
+    });
+  }
 
   // --- Export Backup Event handler ---
   container.querySelector('#export-backup-btn').addEventListener('click', () => {
