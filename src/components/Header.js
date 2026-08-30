@@ -283,7 +283,7 @@ export function isDaySuccessful(day) {
   
   if (totalTasks > 0 && taskRate >= 0.6 && (satisfaction === null || satisfaction >= 6)) return true;
   if (satisfaction !== null && satisfaction >= 8) return true;
-  if (completedNonNegs >= 3) return true;
+  if (completedNonNegs >= 8) return true;
   
   return false;
 }

@@ -165,7 +165,7 @@ export function renderFinance(container, state) {
     </div>
 
     <!-- Top Financial Overview Stats -->
-    <div class="dashboard-grid" style="grid-template-columns: repeat(3, 1fr);">
+    <div class="dashboard-grid">
       <div class="stat-card earnings">
         <span class="stat-icon">${icons.finance}</span>
         <span class="stat-label">Month Revenue</span>

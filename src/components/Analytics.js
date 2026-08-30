@@ -131,7 +131,7 @@ export function renderAnalytics(container, state) {
 
   container.innerHTML = `
     <!-- Top Stats row -->
-    <div class="dashboard-grid" style="grid-template-columns: repeat(4, 1fr);">
+    <div class="dashboard-grid">
       <div class="stat-card success">
         <span class="stat-label">Daily Consistency</span>
         <span class="stat-value">${consistencyScore}%</span>
@@ -158,7 +158,7 @@ export function renderAnalytics(container, state) {
     </div>
 
     <!-- Secondary aggregations grid -->
-    <div class="dashboard-grid" style="grid-template-columns: repeat(4, 1fr); margin-bottom: 32px;">
+    <div class="dashboard-grid" style="margin-bottom: 32px;">
       <div class="stat-card">
         <span class="stat-label">Most Completed Task</span>
         <span class="stat-value" style="font-size: 14px; font-weight: 700; height: 35px; display: flex; align-items: center; overflow: hidden; text-overflow: ellipsis;">
@@ -188,7 +188,7 @@ export function renderAnalytics(container, state) {
       </div>
     </div>
 
-    <div class="charts-grid" style="grid-template-columns: 1.2fr 2fr;">
+    <div class="charts-grid">
       <!-- Life Dimensions Radar -->
       <div class="chart-wrapper">
         <div class="card-title">Productivity Balance Matrix</div>
@@ -310,7 +310,7 @@ function isDaySuccessfulForStreak(day, totalNNCount) {
   
   if (totalTasks > 0 && taskRate >= 0.6 && (satisfaction === null || satisfaction >= 6)) return true;
   if (satisfaction !== null && satisfaction >= 8) return true;
-  if (completedNonNegs >= 3) return true;
+  if (completedNonNegs >= 8) return true;
   
   return false;
 }

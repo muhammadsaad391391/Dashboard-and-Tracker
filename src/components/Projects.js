@@ -416,7 +416,7 @@ export function renderProjects(container, state) {
           <div class="card">
             <div class="card-title">➕ Add New Project</div>
             <div style="display:flex; flex-direction:column; gap:12px;">
-              <div style="display:grid; grid-template-columns: 2fr 1fr 1fr; gap:12px;">
+              <div style="display:grid; grid-template-columns: 2fr 1fr 1fr; gap:12px;" class="project-form-grid">
                 <div style="display:flex; flex-direction:column; gap:4px;">
                   <label style="font-size:11px; font-weight:700; color:var(--text-secondary);">Project Name</label>
                   <input type="text" id="new-proj-name" class="premium-input" placeholder="E.g. Etsy Crochet Shop" style="height:32px; padding:4px 8px;">
@@ -443,7 +443,7 @@ export function renderProjects(container, state) {
                 </div>
               </div>
 
-              <div style="display:grid; grid-template-columns: repeat(3, 1fr); gap:12px;">
+              <div style="display:grid; grid-template-columns: repeat(3, 1fr); gap:12px;" class="project-form-grid">
                 <div style="display:flex; flex-direction:column; gap:4px;">
                   <label style="font-size:11px; font-weight:700; color:var(--text-secondary);">Deadline Date</label>
                   <input type="date" id="new-proj-deadline" class="premium-input" style="height:32px; padding:4px 8px;">
