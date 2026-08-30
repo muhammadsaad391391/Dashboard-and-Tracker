@@ -707,7 +707,25 @@ class AppState {
           if (db.projects) await db.projects.clear();
 
           await db.days.bulkAdd(data.days);
-          await db.nonNegotiables.bulkAdd(data.nonNegotiables);
+
+          let finalNN = data.nonNegotiables || [];
+          if (finalNN.length === 0) {
+            finalNN = [
+              { id: 'nn-seo', name: 'SEO', order: 0 },
+              { id: 'nn-quran', name: 'Quran', order: 1 },
+              { id: 'nn-arabic', name: 'Arabic', order: 2 },
+              { id: 'nn-exercise', name: 'Exercise', order: 3 },
+              { id: 'nn-mbbs', name: 'Extraordinary in MBBS', order: 4 },
+              { id: 'nn-communication', name: 'Communication', order: 5 },
+              { id: 'nn-social', name: 'Quit Social media', order: 6 },
+              { id: 'nn-phone', name: 'Quit Mobile Phone', order: 7 },
+              { id: 'nn-read', name: 'Read Book about 10 mins daily', order: 8 },
+              { id: 'nn-schedule', name: 'Make and report daily schedule', order: 9 }
+            ];
+            setTimeout(() => this.pushToCloud(), 1000);
+          }
+          await db.nonNegotiables.bulkAdd(finalNN);
+
           if (data.projects && db.projects) {
             await db.projects.bulkAdd(data.projects);
           }
