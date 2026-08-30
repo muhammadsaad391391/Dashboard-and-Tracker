@@ -176,7 +176,8 @@ class AppState {
       // Perform database migration to update non-negotiables to user's 10 daily essentials
       const nnVersionSetting = await db.settings.get('non_negotiables_version');
       const nnVersion = nnVersionSetting ? nnVersionSetting.value : 0;
-      if (nnVersion < 2) {
+      const nnCount = await db.nonNegotiables.count();
+      if (nnVersion < 2 || nnCount === 0) {
         if (window.setAetherLoaderText) window.setAetherLoaderText('Migrating non-negotiables...');
         await db.nonNegotiables.clear();
         const userEssentials = [
