@@ -1875,6 +1875,10 @@ html.light .theme-switch-thumb {
     gap: 8px !important;
   }
 
+  #sidebar-collapse-toggle {
+    margin-top: 6px !important;
+  }
+
   .header-title {
     font-size: 18px;
     margin-top: 4px;
