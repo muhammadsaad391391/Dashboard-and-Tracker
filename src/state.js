@@ -170,6 +170,67 @@ class AppState {
       // Seed DB if it's the first run
       await seedDatabase();
 
+      // Force database reset migration to version 3
+      const resetVersionSetting = await db.settings.get('db_reset_v3');
+      const resetVersion = resetVersionSetting ? resetVersionSetting.value : 0;
+      if (resetVersion < 3) {
+        if (window.setAetherLoaderText) window.setAetherLoaderText('Executing forced clean database reset...');
+        
+        // Clear tables
+        await db.days.clear();
+        await db.nonNegotiables.clear();
+        if (db.projects) await db.projects.clear();
+        
+        // Re-seed essentials
+        const userEssentials = [
+          { id: 'nn-seo', name: 'SEO', order: 0 },
+          { id: 'nn-quran', name: 'Quran', order: 1 },
+          { id: 'nn-arabic', name: 'Arabic', order: 2 },
+          { id: 'nn-exercise', name: 'Exercise', order: 3 },
+          { id: 'nn-mbbs', name: 'Extraordinary in MBBS', order: 4 },
+          { id: 'nn-communication', name: 'Communication', order: 5 },
+          { id: 'nn-social', name: 'Quit Social media', order: 6 },
+          { id: 'nn-phone', name: 'Quit Mobile Phone', order: 7 },
+          { id: 'nn-read', name: 'Read Book about 10 mins daily', order: 8 },
+          { id: 'nn-schedule', name: 'Make and report daily schedule', order: 9 }
+        ];
+        await db.nonNegotiables.bulkAdd(userEssentials);
+        await db.settings.put({ key: 'non_negotiables_version', value: 2 });
+        
+        // Set new pre-built slots
+        const newSlots = [
+          '05:00 AM - 06:00 AM',
+          '06:00 AM - 07:00 AM',
+          '07:00 AM - 08:00 AM',
+          '08:00 AM - 09:00 AM',
+          '09:00 AM - 10:00 AM',
+          '10:00 AM - 11:00 AM',
+          '11:00 AM - 12:00 PM',
+          '12:00 PM - 01:00 PM',
+          '02:00 PM - 03:00 PM',
+          '03:00 PM - 04:00 PM',
+          '04:00 PM - 05:00 PM',
+          '05:30 PM - 06:30 PM',
+          '06:45 PM - 07:45 PM',
+          '07:45 PM - 08:15 + 08:30 - 09:00 PM',
+          '09:00 PM - 10:00 PM',
+          '10:00 PM - 11:00 PM'
+        ];
+        this.timeIntervals = newSlots;
+        await db.settings.put({ key: 'time_intervals', value: newSlots });
+        
+        // Set reset version setting
+        await db.settings.put({ key: 'db_reset_v3', value: 3 });
+        
+        // Force push the empty database state to the cloud to overwrite other devices!
+        this.syncCode = 'global_shared_backup';
+        this.syncEnabled = true;
+        await db.settings.put({ key: 'sync_code', value: 'global_shared_backup' });
+        await db.settings.put({ key: 'sync_enabled', value: true });
+        
+        await this.pushToCloud();
+      }
+
       if (window.setAetherLoaderText) window.setAetherLoaderText('Checking database migrations...');
       // Perform database migration to update non-negotiables to user's 10 daily essentials
       const nnVersionSetting = await db.settings.get('non_negotiables_version');
@@ -277,7 +338,7 @@ class AppState {
 
   // Fetch lists directly from IndexedDB
   async fetchData() {
-    this.days = await db.days.toArray();
+    this.days = (await db.days.toArray()).filter(day => day.date >= '2026-08-31');
     // Sort days chronologically by date string
     this.days.sort((a, b) => a.date.localeCompare(b.date));
 
@@ -292,21 +353,22 @@ class AppState {
 
     const intervalsSetting = await db.settings.get('time_intervals');
     this.timeIntervals = intervalsSetting ? intervalsSetting.value : [
-      '04:30 AM - 05:30 AM',
-      '05:30 AM - 06:30 AM',
-      '06:30 AM - 07:30 AM',
-      '07:30 AM - 08:30 AM',
-      '08:30 AM - 09:30 AM',
-      '09:30 AM - 10:30 AM',
-      '10:30 AM - 11:30 AM',
-      '11:30 AM - 12:30 PM',
-      '01:30 PM - 02:30 PM',
-      '02:30 PM - 03:30 PM',
-      '03:30 PM - 04:30 PM',
-      '04:30 PM - 05:30 PM',
-      '06:00 PM - 07:00 PM',
-      '07:30 PM - 09:00 PM',
-      '09:30 PM - 10:30 PM'
+      '05:00 AM - 06:00 AM',
+      '06:00 AM - 07:00 AM',
+      '07:00 AM - 08:00 AM',
+      '08:00 AM - 09:00 AM',
+      '09:00 AM - 10:00 AM',
+      '10:00 AM - 11:00 AM',
+      '11:00 AM - 12:00 PM',
+      '12:00 PM - 01:00 PM',
+      '02:00 PM - 03:00 PM',
+      '03:00 PM - 04:00 PM',
+      '04:00 PM - 05:00 PM',
+      '05:30 PM - 06:30 PM',
+      '06:45 PM - 07:45 PM',
+      '07:45 PM - 08:15 + 08:30 - 09:00 PM',
+      '09:00 PM - 10:00 PM',
+      '10:00 PM - 11:00 PM'
     ];
 
     // Purge any ghost tasks (seeded tasks that do not match any time intervals)
