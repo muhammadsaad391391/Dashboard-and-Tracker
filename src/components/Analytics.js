@@ -6,7 +6,37 @@ Chart.register(RadarController, RadialLinearScale, PointElement, LineElement, Fi
 
 let chartRadar = null;
 
+let currentPreset = 'all';
+let customStartDate = '';
+let customEndDate = '';
+
 export function renderAnalytics(container, state) {
+  // Determine dates based on preset
+  let startDate = null;
+  let endDate = null;
+
+  if (currentPreset === '7days') {
+    const d = new Date();
+    d.setDate(d.getDate() - 7);
+    startDate = d.toISOString().split('T')[0];
+  } else if (currentPreset === '30days') {
+    const d = new Date();
+    d.setDate(d.getDate() - 30);
+    startDate = d.toISOString().split('T')[0];
+  } else if (currentPreset === 'month') {
+    const d = new Date();
+    startDate = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-01`;
+  } else if (currentPreset === 'custom') {
+    startDate = customStartDate;
+    endDate = customEndDate;
+  }
+
+  const filteredDays = state.days.filter(day => {
+    if (startDate && day.date < startDate) return false;
+    if (endDate && day.date > endDate) return false;
+    return true;
+  });
+
   // 1. Core aggregations and computations
   let totalTasks = 0;
   let completedTasksCount = 0;
@@ -27,7 +57,7 @@ export function renderAnalytics(container, state) {
   let bestDay = { label: "None yet", score: -1 };
   let worstDay = { label: "None yet", score: 101 };
 
-  state.days.forEach(day => {
+  filteredDays.forEach(day => {
     // Check if user has interacted with this day
     const hasInteracted = (day.schedule && day.schedule.some(t => t.status !== 'pending')) ||
                           (day.satisfaction && day.satisfaction.score !== 5 && day.satisfaction.score !== null) ||
@@ -53,7 +83,7 @@ export function renderAnalytics(container, state) {
     }
 
     // Satisfaction score
-    if (day.satisfaction && day.satisfaction.score !== null) {
+    if (day.satisfaction && day.satisfaction.score !== null && hasInteracted) {
       satisfactionSum += day.satisfaction.score;
       ratedDaysCount++;
     }
@@ -98,7 +128,7 @@ export function renderAnalytics(container, state) {
   });
 
   // Streaks
-  const longestStreak = calculateLongestStreak(state.days);
+  const longestStreak = calculateLongestStreak(filteredDays);
 
   // Calculate most completed task
   let mostCompletedTask = "None yet";
@@ -130,6 +160,31 @@ export function renderAnalytics(container, state) {
   const profitConsistency = interactedDaysCount > 0 ? (profitDaysCount / interactedDaysCount) * 100 : 0;
 
   container.innerHTML = `
+    <!-- Date Range Filter panel -->
+    <div class="card" style="margin-bottom: 24px; padding: 14px 20px; display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 16px;">
+      <div style="display: flex; align-items: center; gap: 8px;">
+        <span style="font-weight: 700; font-size: 13px; color: var(--text-primary);">📅 Date Filter:</span>
+        <select id="analytics-preset-select" class="premium-select" style="padding: 4px 12px; font-size: 13px; height: 30px; width: 145px; cursor: pointer;">
+          <option value="all">All Time</option>
+          <option value="7days">Last 7 Days</option>
+          <option value="30days">Last 30 Days</option>
+          <option value="month">This Month</option>
+          <option value="custom">Custom Range...</option>
+        </select>
+      </div>
+      
+      <div id="analytics-custom-dates" style="display: none; align-items: center; gap: 12px; flex-wrap: wrap;">
+        <div style="display: flex; align-items: center; gap: 6px;">
+          <label style="font-size: 11px; font-weight: 700; color: var(--text-secondary);">Start:</label>
+          <input type="date" id="analytics-start-date" class="premium-input" style="width: 135px; height: 30px; padding: 4px 8px; font-size: 12px;">
+        </div>
+        <div style="display: flex; align-items: center; gap: 6px;">
+          <label style="font-size: 11px; font-weight: 700; color: var(--text-secondary);">End:</label>
+          <input type="date" id="analytics-end-date" class="premium-input" style="width: 135px; height: 30px; padding: 4px 8px; font-size: 12px;">
+        </div>
+        <button class="btn btn-primary btn-sm" id="analytics-apply-btn" style="height: 30px; padding: 0 14px; font-size: 12px; border-radius: 4px;">Apply</button>
+      </div>
+    </div>
     <!-- Top Stats row -->
     <div class="dashboard-grid">
       <div class="stat-card success">
@@ -199,9 +254,9 @@ export function renderAnalytics(container, state) {
       <div class="card" style="height: 320px; overflow-y: auto; margin: 0;">
         <div class="card-title">Daily Reflection Log</div>
         <div class="task-list">
-          ${state.days.filter(d => d.notes && d.notes.trim() !== '').length === 0 ? `
+          ${filteredDays.filter(d => d.notes && d.notes.trim() !== '').length === 0 ? `
             <div class="cell-empty" style="padding: 60px 0;">No personal notes logged yet. Use the Daily Planner to write daily journals!</div>
-          ` : [...state.days].filter(d => d.notes && d.notes.trim() !== '').sort((a,b) => b.date.localeCompare(a.date)).map(day => `
+          ` : [...filteredDays].filter(d => d.notes && d.notes.trim() !== '').sort((a,b) => b.date.localeCompare(a.date)).map(day => `
             <div class="task-row" style="flex-direction: column; align-items: flex-start; gap: 6px; padding: 14px;">
               <div style="display:flex; justify-content:space-between; width:100%; font-size:12px; font-weight:700;">
                 <span>${day.label}</span>
@@ -233,6 +288,42 @@ export function renderAnalytics(container, state) {
       state.theme
     );
   }, 50);
+
+  // Attach Event Handlers for Date Filter
+  const presetSelect = container.querySelector('#analytics-preset-select');
+  const customDates = container.querySelector('#analytics-custom-dates');
+  const startInput = container.querySelector('#analytics-start-date');
+  const endInput = container.querySelector('#analytics-end-date');
+  const applyBtn = container.querySelector('#analytics-apply-btn');
+
+  if (presetSelect) {
+    presetSelect.value = currentPreset;
+    if (currentPreset === 'custom') {
+      customDates.style.display = 'flex';
+      startInput.value = customStartDate;
+      endInput.value = customEndDate;
+    } else {
+      customDates.style.display = 'none';
+    }
+
+    presetSelect.addEventListener('change', () => {
+      currentPreset = presetSelect.value;
+      if (currentPreset === 'custom') {
+        customDates.style.display = 'flex';
+      } else {
+        customDates.style.display = 'none';
+        renderAnalytics(container, state);
+      }
+    });
+  }
+
+  if (applyBtn) {
+    applyBtn.addEventListener('click', () => {
+      customStartDate = startInput.value;
+      customEndDate = endInput.value;
+      renderAnalytics(container, state);
+    });
+  }
 }
 
 function initRadarChart(taskRate, habitRate, satisfactionRate, profitRate, savingsRate, theme) {
