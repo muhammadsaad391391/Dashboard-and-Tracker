@@ -146,7 +146,7 @@ export function renderCategoryTracker(container, state, categoryId, categoryLabe
 
   // Click handler
   container.querySelectorAll('.cell-task').forEach(cell => {
-    cell.addEventListener('dblclick', (e) => {
+    const handleCatAction = (e) => {
       if (cell.querySelector('input')) return;
 
       const date = cell.getAttribute('data-date');
@@ -156,7 +156,7 @@ export function renderCategoryTracker(container, state, categoryId, categoryLabe
       if (taskId) {
         showCatCellStatusOverlay(e, cell, date, taskId, state, categoryId, categoryLabel, categoryType, categoryIcon);
       } else {
-        showPlannerCellPopup(e, cell, date, time, state, categoryType, async (taskName) => {
+        showPlannerCellPopup(e, cell, date, time, state, categoryType, async (taskName, taskType) => {
           const day = state.days.find(d => d.date === date);
           if (day) {
             const newTask = {
@@ -166,7 +166,7 @@ export function renderCategoryTracker(container, state, categoryId, categoryLabe
               status: 'pending',
               missedReason: '',
               actualTime: '',
-              type: categoryType
+              type: taskType || categoryType
             };
             day.schedule.push(newTask);
             day.schedule.sort((a, b) => {
@@ -179,7 +179,16 @@ export function renderCategoryTracker(container, state, categoryId, categoryLabe
           }
         });
       }
-    });
+    };
+
+    cell.addEventListener('dblclick', handleCatAction);
+    if (window.innerWidth <= 768) {
+      cell.addEventListener('click', (e) => {
+        if (state.selectedCells.length <= 1) {
+          handleCatAction(e);
+        }
+      });
+    }
   });
 
   // Week Navigation Listeners

@@ -1,32 +1,46 @@
 import { icons } from '../icons.js';
 import confetti from 'canvas-confetti';
 
-export function showPlannerCellPopup(e, cell, date, time, state, categoryType, onSaveCallback) {
-  e.stopPropagation();
+export function showPlannerCellPopup(e, cell, date, time, state, categoryType = 'general', onSaveCallback) {
+  if (e && e.stopPropagation) e.stopPropagation();
 
-  // Remove existing popups
+  // Remove existing popups and backdrops
   const existing = document.querySelector('.status-popup');
   if (existing) existing.remove();
+  const existingBackdrop = document.querySelector('.modal-backdrop-fade');
+  if (existingBackdrop) existingBackdrop.remove();
 
-  // Find matching projects for this category
-  // If categoryType is 'general', we show all projects. Otherwise, filter by type
-  const matchingProjects = state.projects.filter(p => {
-    if (p.status === 'Completed' || p.status === 'Paused') return false;
-    if (categoryType === 'general') return true;
-    return p.type === categoryType;
-  });
+  // Get all active projects across all categories
+  const allActiveProjects = state.projects.filter(p => p.status !== 'Completed' && p.status !== 'Paused');
+
+  // Backdrop
+  const backdrop = document.createElement('div');
+  backdrop.className = 'modal-backdrop-fade';
+  backdrop.style.cssText = `
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100vw;
+    height: 100vh;
+    background: rgba(0, 0, 0, 0.45);
+    backdrop-filter: blur(2px);
+    z-index: 9999;
+  `;
+  document.body.appendChild(backdrop);
 
   const overlay = document.createElement('div');
   overlay.className = 'status-popup';
-  overlay.style.width = '300px';
+  overlay.style.width = '320px';
   overlay.style.padding = '16px';
   overlay.style.display = 'flex';
   overlay.style.flexDirection = 'column';
   overlay.style.gap = '12px';
-  overlay.style.top = `${Math.min(window.innerHeight - 350, e.clientY + window.scrollY + 10)}px`;
-  overlay.style.left = `${Math.min(window.innerWidth - 320, Math.max(10, e.clientX + window.scrollX - 150))}px`;
-  overlay.style.zIndex = '1000';
-  overlay.style.boxShadow = '0 10px 25px rgba(0,0,0,0.2)';
+  if (e && e.clientY && window.innerWidth > 768) {
+    overlay.style.top = `${Math.min(window.innerHeight - 380, e.clientY + window.scrollY + 10)}px`;
+    overlay.style.left = `${Math.min(window.innerWidth - 340, Math.max(10, e.clientX + window.scrollX - 160))}px`;
+  }
+  overlay.style.zIndex = '10000';
+  overlay.style.boxShadow = '0 10px 30px rgba(0,0,0,0.3)';
 
   // Check if clipboard is active to show Paste option
   const clipName = state.clipboard ? (state.clipboard.name || (state.clipboard.tasks && state.clipboard.tasks[0] && state.clipboard.tasks[0].name) || '') : '';
@@ -61,16 +75,19 @@ export function showPlannerCellPopup(e, cell, date, time, state, categoryType, o
         <hr style="flex:1; border:none; border-top:1px solid var(--border-color);">
       </div>
       
-      <select id="popup-proj-task-select" class="premium-select" style="width:100%; font-size:12px; padding:6px; height:32px;">
+      <select id="popup-proj-task-select" class="premium-select" style="width:100%; font-size:12px; padding:6px; height:34px;">
         <option value="">-- Choose Project Task --</option>
-        ${matchingProjects.map(proj => `
-          <optgroup label="${proj.name} ${proj.isDailyAllocation ? '(Daily Goal)' : ''}">
-            ${proj.isDailyAllocation ? `<option value="${proj.id}|daily">General Work (Daily Goal)</option>` : ''}
-            ${proj.subtasks ? proj.subtasks.filter(s => !s.completed).map(sub => `
-              <option value="${proj.id}|${sub.id}">${sub.name}</option>
-            `).join('') : ''}
-          </optgroup>
-        `).join('')}
+        ${allActiveProjects.map(proj => {
+          const catLabel = proj.type === 'study' ? 'Study' : proj.type === 'etsy_seo' ? 'Etsy' : proj.type === 'quran' ? 'Quran' : 'General';
+          return `
+            <optgroup label="${proj.name} [${catLabel}]">
+              ${proj.isDailyAllocation ? `<option value="${proj.id}|daily">General Work (Daily Goal)</option>` : ''}
+              ${proj.subtasks ? proj.subtasks.filter(s => !s.completed).map(sub => `
+                <option value="${proj.id}|${sub.id}">${sub.name}</option>
+              `).join('') : ''}
+            </optgroup>
+          `;
+        }).join('')}
       </select>
     </div>
 
@@ -82,27 +99,40 @@ export function showPlannerCellPopup(e, cell, date, time, state, categoryType, o
     </div>
 
     <div style="display:flex; gap:6px;">
-      <button class="btn btn-secondary btn-sm" id="popup-toggle-quick-task" style="flex:1; font-size:10px; justify-content:center; padding:6px 0;">+ Add Task</button>
-      <button class="btn btn-secondary btn-sm" id="popup-toggle-quick-proj" style="flex:1; font-size:10px; justify-content:center; padding:6px 0;">+ New Project</button>
+      <button class="btn btn-secondary btn-sm" id="popup-toggle-quick-task" style="flex:1; font-size:11px; justify-content:center; padding:6px 0;">+ Add Task</button>
+      <button class="btn btn-secondary btn-sm" id="popup-toggle-quick-proj" style="flex:1; font-size:11px; justify-content:center; padding:6px 0;">+ New Project</button>
     </div>
 
     <!-- Hidden Sub-Panels for Quick Actions -->
-    <div id="popup-quick-task-panel" style="display:none; flex-direction:column; gap:8px; background:var(--bg-tertiary); padding:8px; border-radius:var(--radius-sm); border:1px solid var(--border-color);">
+    <div id="popup-quick-task-panel" style="display:none; flex-direction:column; gap:8px; background:var(--bg-tertiary); padding:10px; border-radius:var(--radius-sm); border:1px solid var(--border-color);">
       <span style="font-size:11px; font-weight:700; color:var(--text-secondary);">Add Subtask to Project</span>
-      <select id="popup-target-project" class="premium-select" style="font-size:11px; padding:4px; height:28px;">
-        ${matchingProjects.filter(p => !p.isDailyAllocation).map(p => `<option value="${p.id}">${p.name}</option>`).join('')}
+      <select id="popup-target-project" class="premium-select" style="font-size:12px; padding:4px; height:30px;">
+        ${allActiveProjects.filter(p => !p.isDailyAllocation).map(p => `<option value="${p.id}">${p.name}</option>`).join('')}
       </select>
-      <input type="text" id="popup-new-task-name" class="premium-input" placeholder="Task name..." style="height:28px; font-size:11px; padding:4px 8px;">
-      <button class="btn btn-primary btn-sm" id="popup-quick-task-save" style="height:24px; font-size:11px; justify-content:center;">Save & Schedule</button>
+      <input type="text" id="popup-new-task-name" class="premium-input" placeholder="Task name..." style="height:30px; font-size:12px; padding:4px 8px;">
+      <button class="btn btn-primary btn-sm" id="popup-quick-task-save" style="height:28px; font-size:11px; justify-content:center; font-weight:700;">Save & Schedule</button>
     </div>
 
-    <div id="popup-quick-proj-panel" style="display:none; flex-direction:column; gap:8px; background:var(--bg-tertiary); padding:8px; border-radius:var(--radius-sm); border:1px solid var(--border-color);">
+    <div id="popup-quick-proj-panel" style="display:none; flex-direction:column; gap:8px; background:var(--bg-tertiary); padding:10px; border-radius:var(--radius-sm); border:1px solid var(--border-color);">
       <span style="font-size:11px; font-weight:700; color:var(--text-secondary);">Create New Project</span>
-      <input type="text" id="popup-new-proj-name" class="premium-input" placeholder="Project name..." style="height:28px; font-size:11px; padding:4px 8px;">
+      <input type="text" id="popup-new-proj-name" class="premium-input" placeholder="Project name..." style="height:30px; font-size:12px; padding:4px 8px;">
       
+      <div style="display:flex; flex-direction:column; gap:4px;">
+        <label style="font-size:10px; font-weight:700; color:var(--text-muted);">Category / Section</label>
+        <select id="popup-new-proj-category" class="premium-select" style="height:30px; font-size:12px; padding:2px 6px;">
+          <option value="general">General</option>
+          <option value="study" ${categoryType === 'study' ? 'selected' : ''}>Study</option>
+          <option value="etsy_seo" ${categoryType === 'etsy_seo' ? 'selected' : ''}>Etsy + SEO</option>
+          <option value="quran" ${categoryType === 'quran' ? 'selected' : ''}>Quran Hifz</option>
+          ${state.customSections.filter(s => s.type !== 'quran').map(s => `
+            <option value="${s.type}" ${categoryType === s.type ? 'selected' : ''}>${s.label}</option>
+          `).join('')}
+        </select>
+      </div>
+
       <div style="display:flex; align-items:center; gap:8px;">
         <input type="checkbox" id="popup-new-proj-is-daily" style="width:14px; height:14px; cursor:pointer;">
-        <label for="popup-new-proj-is-daily" style="font-size:10px; font-weight:600; color:var(--text-secondary); cursor:pointer;">Fixed Daily Goal</label>
+        <label for="popup-new-proj-is-daily" style="font-size:11px; font-weight:600; color:var(--text-secondary); cursor:pointer;">Fixed Daily Goal</label>
       </div>
 
       <div id="popup-new-proj-daily-wrapper" style="display:none; flex-direction:column; gap:2px;">
@@ -110,14 +140,18 @@ export function showPlannerCellPopup(e, cell, date, time, state, categoryType, o
         <input type="number" id="popup-new-proj-daily-minutes" class="premium-input" value="60" style="height:26px; font-size:11px; padding:4px 8px; width:80px;">
       </div>
 
-      <button class="btn btn-primary btn-sm" id="popup-quick-proj-save" style="height:24px; font-size:11px; justify-content:center;">Create & Reload</button>
+      <button class="btn btn-primary btn-sm" id="popup-quick-proj-save" style="height:28px; font-size:11px; justify-content:center; font-weight:700;">Create & Reload</button>
     </div>
   `;
 
   document.body.appendChild(overlay);
 
   // Close handlers
-  const closePopup = () => { overlay.remove(); };
+  const closePopup = () => {
+    overlay.remove();
+    backdrop.remove();
+  };
+  backdrop.addEventListener('click', closePopup);
   overlay.querySelector('#popup-close-btn').addEventListener('click', closePopup);
 
   const customInput = overlay.querySelector('#popup-custom-task');
@@ -126,7 +160,7 @@ export function showPlannerCellPopup(e, cell, date, time, state, categoryType, o
   const executeCustomSave = () => {
     const val = customInput.value.trim();
     if (val) {
-      onSaveCallback(val);
+      onSaveCallback(val, categoryType || 'general');
       closePopup();
     }
   };
@@ -164,7 +198,7 @@ export function showPlannerCellPopup(e, cell, date, time, state, categoryType, o
       }
 
       if (taskName) {
-        onSaveCallback(taskName);
+        onSaveCallback(taskName, project.type || 'general');
         confetti({ particleCount: 40, spread: 30 });
       }
     }
@@ -220,7 +254,7 @@ export function showPlannerCellPopup(e, cell, date, time, state, categoryType, o
       project.lastWorkedOn = Date.now();
       await state.updateProject(targetProjId, { subtasks: project.subtasks, lastWorkedOn: project.lastWorkedOn });
       
-      onSaveCallback(`${project.name}: ${newTaskName}`);
+      onSaveCallback(`${project.name}: ${newTaskName}`, project.type || 'general');
       confetti({ particleCount: 30, spread: 20 });
       closePopup();
     }
@@ -236,12 +270,13 @@ export function showPlannerCellPopup(e, cell, date, time, state, categoryType, o
 
     const isDaily = isDailyCheck.checked;
     const dailyMins = Number(overlay.querySelector('#popup-new-proj-daily-minutes').value) || 60;
+    const chosenCat = overlay.querySelector('#popup-new-proj-category').value;
 
     const newProj = {
       name: newProjName,
       status: 'In progress',
       priority: 'medium',
-      type: categoryType === 'general' ? 'flexible' : categoryType,
+      type: chosenCat,
       isDailyAllocation: isDaily,
       dailyAllocationMinutes: isDaily ? dailyMins : 0,
       subtasks: []
@@ -258,7 +293,7 @@ export function showPlannerCellPopup(e, cell, date, time, state, categoryType, o
   const pasteBtn = overlay.querySelector('#popup-paste-btn');
   if (pasteBtn) {
     pasteBtn.addEventListener('click', () => {
-      onSaveCallback(clipName);
+      onSaveCallback(clipName, categoryType || 'general');
       closePopup();
     });
   }

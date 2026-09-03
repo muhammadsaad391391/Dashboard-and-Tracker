@@ -289,8 +289,26 @@ class AppState {
 
     if (db.projects) {
       this.projects = await db.projects.toArray();
+      if (this.projects.length === 0) {
+        const starterProjects = this.getDefaultStarterProjects();
+        await db.projects.bulkAdd(starterProjects);
+        this.projects = await db.projects.toArray();
+      }
     } else {
       this.projects = [];
+    }
+
+    // Ensure Quran / Hifz tracker is present in customSections if not already added
+    const sectionsSetting = await db.settings.get('custom_sections');
+    this.customSections = sectionsSetting ? sectionsSetting.value : [];
+    if (!this.customSections.some(s => s.type === 'quran' || s.label.toLowerCase().includes('quran') || s.label.toLowerCase().includes('wuran') || s.label.toLowerCase().includes('hifz'))) {
+      this.customSections.push({
+        id: 'sec-quran',
+        label: 'Quran Hifz',
+        type: 'quran',
+        icon: 'study'
+      });
+      await db.settings.put({ key: 'custom_sections', value: this.customSections });
     }
 
     const intervalsSetting = await db.settings.get('time_intervals');
@@ -726,8 +744,9 @@ class AppState {
           }
           await db.nonNegotiables.bulkAdd(finalNN);
 
-          if (data.projects && db.projects) {
-            await db.projects.bulkAdd(data.projects);
+          if (db.projects) {
+            const finalProjects = (data.projects && data.projects.length > 0) ? data.projects : this.getDefaultStarterProjects();
+            await db.projects.bulkAdd(finalProjects);
           }
         });
         
@@ -824,6 +843,66 @@ class AppState {
     await this.fetchData();
     if (this.syncEnabled) await this.pushToCloud();
     this.notify();
+  }
+
+  getDefaultStarterProjects() {
+    return [
+      {
+        name: 'Etsy Shop & SEO Mastery',
+        status: 'In progress',
+        priority: 'high',
+        type: 'etsy_seo',
+        deadline: '',
+        goal: 'Scale listings, optimize tags, and drive organic sales',
+        nextGoal: 'Publish 2 high-converting product listings',
+        estimatedHours: 15,
+        availableHoursPerDay: 2,
+        isDailyAllocation: false,
+        dailyAllocationMinutes: 0,
+        subtasks: [
+          { id: 'sub-etsy-1', name: 'Niche & Keyword research for high-demand items', estimatedMinutes: 30, completed: false },
+          { id: 'sub-etsy-2', name: 'Create & publish 2 optimized listings', estimatedMinutes: 45, completed: false },
+          { id: 'sub-etsy-3', name: 'Audit listing tags, titles & alt-text SEO', estimatedMinutes: 30, completed: false },
+          { id: 'sub-etsy-4', name: 'Review conversion analytics & customer feedback', estimatedMinutes: 20, completed: false }
+        ]
+      },
+      {
+        name: 'MBBS Academic Study & Clinicals',
+        status: 'In progress',
+        priority: 'critical',
+        type: 'study',
+        deadline: '',
+        goal: 'Master high-yield clinical concepts & exam excellence',
+        nextGoal: 'Complete Pathology core review',
+        estimatedHours: 25,
+        availableHoursPerDay: 3,
+        isDailyAllocation: false,
+        dailyAllocationMinutes: 0,
+        subtasks: [
+          { id: 'sub-study-1', name: 'Pathology core chapter high-yield review', estimatedMinutes: 60, completed: false },
+          { id: 'sub-study-2', name: 'Pharmacology drug mechanisms & flashcards', estimatedMinutes: 45, completed: false },
+          { id: 'sub-study-3', name: 'Clinical case diagnosis practice', estimatedMinutes: 45, completed: false }
+        ]
+      },
+      {
+        name: 'Quran Hifz & Daily Revision',
+        status: 'In progress',
+        priority: 'critical',
+        type: 'quran',
+        deadline: '',
+        goal: 'Hifz memorization & strong daily revision consistency',
+        nextGoal: 'Solidify current Juz & new page',
+        estimatedHours: 30,
+        availableHoursPerDay: 2,
+        isDailyAllocation: false,
+        dailyAllocationMinutes: 0,
+        subtasks: [
+          { id: 'sub-quran-1', name: 'Memorize new lesson (Sabaq)', estimatedMinutes: 45, completed: false },
+          { id: 'sub-quran-2', name: 'Recent revision (Sabqi) review', estimatedMinutes: 30, completed: false },
+          { id: 'sub-quran-3', name: 'Manzil recitation & revision', estimatedMinutes: 45, completed: false }
+        ]
+      }
+    ];
   }
 }
 

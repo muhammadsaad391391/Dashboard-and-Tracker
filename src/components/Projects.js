@@ -628,15 +628,17 @@ function bindProjectsEvents(container, state, processedProjects) {
     });
   });
 
-  // F. Add Subtask to Project
+  // F. Add Subtask to Project (Properly scoped for both mobile cards and desktop table)
   container.querySelectorAll('.add-subtask-btn').forEach(btn => {
-    btn.addEventListener('click', async () => {
-      const projId = Number(btn.getAttribute('data-proj-id'));
-      const nameInput = container.querySelector(`.new-subtask-name[data-proj-id="${projId}"]`);
-      const estInput = container.querySelector(`.new-subtask-est[data-proj-id="${projId}"]`);
-      
+    const parentContainer = btn.closest('.mobile-project-card, .project-accordion-row') || container;
+    const projId = Number(btn.getAttribute('data-proj-id'));
+    const nameInput = parentContainer.querySelector(`.new-subtask-name[data-proj-id="${projId}"]`);
+    const estInput = parentContainer.querySelector(`.new-subtask-est[data-proj-id="${projId}"]`);
+    
+    const handleAddSubtask = async () => {
+      if (!nameInput) return;
       const nameVal = nameInput.value.trim();
-      const estVal = parseInt(estInput.value.trim()) || 30;
+      const estVal = parseInt(estInput ? estInput.value.trim() : '30') || 30;
       
       if (nameVal) {
         const project = state.projects.find(p => p.id === projId);
@@ -648,11 +650,21 @@ function bindProjectsEvents(container, state, processedProjects) {
             estimatedMinutes: estVal,
             completed: false
           });
-          await state.updateProject(projId, { subtasks });
+          project.lastWorkedOn = Date.now();
+          await state.updateProject(projId, { subtasks, lastWorkedOn: project.lastWorkedOn });
           renderProjects(container, state);
         }
+      } else {
+        alert("Please enter a task name first!");
       }
-    });
+    };
+
+    btn.addEventListener('click', handleAddSubtask);
+    if (nameInput) {
+      nameInput.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') handleAddSubtask();
+      });
+    }
   });
 
   // Quick Schedule Daily Allocation Block Today
@@ -704,18 +716,19 @@ function bindProjectsEvents(container, state, processedProjects) {
     });
   });
 
-  // G. Edit Project Details Save Button
+  // G. Edit Project Details Save Button (Scoped for mobile & desktop)
   container.querySelectorAll('.save-proj-details-btn').forEach(btn => {
     btn.addEventListener('click', async () => {
+      const parentContainer = btn.closest('.mobile-project-card, .project-accordion-row') || container;
       const projId = Number(btn.getAttribute('data-id'));
       const project = state.projects.find(p => p.id === projId);
       if (!project) return;
 
-      const availInput = container.querySelector(`.edit-proj-available[data-proj-id="${projId}"]`);
-      const nextInput = container.querySelector(`.edit-proj-nextgoal[data-proj-id="${projId}"]`);
+      const availInput = parentContainer.querySelector(`.edit-proj-available[data-proj-id="${projId}"]`);
+      const nextInput = parentContainer.querySelector(`.edit-proj-nextgoal[data-proj-id="${projId}"]`);
       
-      const avail = Number(availInput.value) || 0;
-      const nextGoal = nextInput.value.trim();
+      const avail = availInput ? (Number(availInput.value) || 0) : project.availableHoursPerDay;
+      const nextGoal = nextInput ? nextInput.value.trim() : project.nextGoal;
 
       const updates = {
         availableHoursPerDay: avail,
@@ -723,11 +736,11 @@ function bindProjectsEvents(container, state, processedProjects) {
       };
 
       if (project.isDailyAllocation) {
-        const dailyMinutesInput = container.querySelector(`.edit-proj-daily-minutes[data-proj-id="${projId}"]`);
-        updates.dailyAllocationMinutes = Number(dailyMinutesInput.value) || 60;
+        const dailyMinutesInput = parentContainer.querySelector(`.edit-proj-daily-minutes[data-proj-id="${projId}"]`);
+        updates.dailyAllocationMinutes = dailyMinutesInput ? (Number(dailyMinutesInput.value) || 60) : project.dailyAllocationMinutes;
       } else {
-        const effortInput = container.querySelector(`.edit-proj-effort[data-proj-id="${projId}"]`);
-        updates.estimatedHours = Number(effortInput.value) || 0;
+        const effortInput = parentContainer.querySelector(`.edit-proj-effort[data-proj-id="${projId}"]`);
+        updates.estimatedHours = effortInput ? (Number(effortInput.value) || 0) : project.estimatedHours;
       }
       
       await state.updateProject(projId, updates);

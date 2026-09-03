@@ -1,6 +1,7 @@
 import { icons } from '../icons.js';
 import { calculateStreak } from './Header.js';
 import confetti from 'canvas-confetti';
+import { showPlannerCellPopup } from './PlannerCellPopup.js';
 
 export function renderDashboard(container, state) {
   // 1. Identify the active date
@@ -194,7 +195,12 @@ export function renderDashboard(container, state) {
               <button class="btn btn-secondary btn-sm" id="dashboard-next-day-btn" style="padding: 2px 6px; font-size: 11px; height: 22px; display:flex; align-items:center; justify-content:center;">▶</button>
             </div>
           </div>
-          <button class="btn btn-secondary btn-sm" id="goto-planner-btn">Open Planner</button>
+          <div style="display:flex; align-items:center; gap:6px; flex-wrap:wrap;">
+            <button class="btn btn-secondary btn-sm" id="replicate-prev-day-btn" style="display:flex; align-items:center; gap:4px; font-size:11px; padding:3px 8px;" title="Clone all tasks from previous day with status reset to Pending">
+              📋 Replicate Yesterday
+            </button>
+            <button class="btn btn-secondary btn-sm" id="goto-planner-btn">Open Planner</button>
+          </div>
         </div>
         
         <div class="task-list" style="max-height: 480px; overflow-y: auto; padding-right: 4px;">
@@ -302,6 +308,55 @@ export function renderDashboard(container, state) {
     gotoNonNeg.addEventListener('click', () => state.setView('non-negotiables'));
   }
 
+  // Replicate previous day tasks handler
+  const replicateBtn = container.querySelector('#replicate-prev-day-btn');
+  if (replicateBtn) {
+    replicateBtn.addEventListener('click', async () => {
+      const curDateObj = new Date(activeDate + 'T00:00:00');
+      curDateObj.setDate(curDateObj.getDate() - 1);
+      const prevYear = curDateObj.getFullYear();
+      const prevMonth = String(curDateObj.getMonth() + 1).padStart(2, '0');
+      const prevDayOfMonth = String(curDateObj.getDate()).padStart(2, '0');
+      const prevDateStr = `${prevYear}-${prevMonth}-${prevDayOfMonth}`;
+
+      const prevDay = state.days.find(d => d.date === prevDateStr);
+      if (!prevDay || !prevDay.schedule || prevDay.schedule.length === 0) {
+        alert(`No scheduled tasks found on the previous day (${prevDateStr}) to replicate.`);
+        return;
+      }
+
+      const taskCount = prevDay.schedule.length;
+      const confirmed = confirm(`Replicate ${taskCount} task${taskCount === 1 ? '' : 's'} from yesterday (${prevDateStr}) into today (${activeDate})?\n\nTasks will be copied with their status reset to Pending.`);
+      if (!confirmed) return;
+
+      // Clone tasks with fresh IDs and pending status
+      const replicatedTasks = prevDay.schedule.map((task, idx) => ({
+        ...task,
+        id: 't-' + Date.now() + '-' + idx,
+        status: 'pending',
+        missedReason: '',
+        actualTime: ''
+      }));
+
+      // Merge into activeDay.schedule:
+      const existingOtherSlots = activeDay.schedule.filter(t => !replicatedTasks.some(r => r.plannedTime === t.plannedTime));
+      const mergedSchedule = [...existingOtherSlots, ...replicatedTasks];
+
+      mergedSchedule.sort((a, b) => {
+        const idxA = state.timeIntervals.indexOf(a.plannedTime);
+        const idxB = state.timeIntervals.indexOf(b.plannedTime);
+        return idxA - idxB;
+      });
+
+      activeDay.schedule = mergedSchedule;
+      await state.updateDay(activeDay.date, { schedule: activeDay.schedule });
+
+      confetti({ particleCount: 50, spread: 45 });
+      alert(`✨ Successfully replicated ${taskCount} task${taskCount === 1 ? '' : 's'} from yesterday into today!`);
+      renderDashboard(container, state);
+    });
+  }
+
   // Date Selector Handlers
   const dbDateInput = container.querySelector('#dashboard-date-input');
   if (dbDateInput) {
@@ -344,90 +399,31 @@ export function renderDashboard(container, state) {
     });
   });
 
-  // Quick Add Task Event Handler
+  // Quick Add Task Event Handler: Open rich planning popup/modal
   const onQuickAddClick = (e) => {
     e.stopPropagation();
     const btn = e.currentTarget;
     const row = btn.closest('.task-row');
     const time = btn.getAttribute('data-time');
-    const originalHTML = row.innerHTML;
-    
-    row.innerHTML = `
-      <div class="task-info-side" style="display: flex; align-items: center; gap: 8px; flex: 1; margin-right: 8px; flex-wrap: wrap;">
-        <span class="task-time-lbl">${time}</span>
-        <input type="text" class="premium-input inline-dashboard-input" placeholder="Task name..." style="flex: 2; font-size: 13px; height: 28px; padding: 4px 8px; background-color: var(--bg-secondary); border: 1px solid var(--border-color); border-radius: var(--radius-sm); color: var(--text-primary); outline: none;" autofocus>
-        <select class="premium-select inline-dashboard-type-select" style="flex: 1; min-width: 100px; height: 28px; font-size: 12px; padding: 2px 4px;">
-          <option value="general">General</option>
-          <option value="study">Study</option>
-          <option value="etsy_seo">Etsy + SEO</option>
-          ${state.customSections.map(s => `
-            <option value="${s.type}">${s.label}</option>
-          `).join('')}
-        </select>
-      </div>
-      <div class="task-actions-side" style="display: flex; gap: 4px;">
-        <button class="btn btn-secondary btn-sm cancel-dashboard-input" style="padding: 2px 6px; font-size: 11px; height: 28px;">Cancel</button>
-        <button class="btn btn-primary btn-sm save-dashboard-input" style="padding: 2px 6px; font-size: 11px; height: 28px;">Save</button>
-      </div>
-    `;
 
-    const input = row.querySelector('.inline-dashboard-input');
-    const typeSelect = row.querySelector('.inline-dashboard-type-select');
-    const cancelBtn = row.querySelector('.cancel-dashboard-input');
-    const saveBtn = row.querySelector('.save-dashboard-input');
-    
-    input.focus();
-
-    const handleSave = async () => {
-      const value = input.value.trim();
-      const type = typeSelect.value;
-      if (value) {
-        const newTask = {
-          id: 't-' + Date.now(),
-          name: value,
-          plannedTime: time,
-          status: 'pending',
-          missedReason: '',
-          actualTime: '',
-          type: type
-        };
-        activeDay.schedule.push(newTask);
-        activeDay.schedule.sort((a, b) => {
-          const indexA = state.timeIntervals.indexOf(a.plannedTime);
-          const indexB = state.timeIntervals.indexOf(b.plannedTime);
-          return indexA - indexB;
-        });
-        await state.updateDay(activeDay.date, { schedule: activeDay.schedule });
-      } else {
-        row.innerHTML = originalHTML;
-        row.querySelector('.quick-add-task-btn').addEventListener('click', onQuickAddClick);
-      }
-    };
-
-    const handleCancel = () => {
-      row.innerHTML = originalHTML;
-      row.querySelector('.quick-add-task-btn').addEventListener('click', onQuickAddClick);
-    };
-
-    cancelBtn.addEventListener('click', (ev) => {
-      ev.stopPropagation();
-      handleCancel();
-    });
-    
-    saveBtn.addEventListener('click', (ev) => {
-      ev.stopPropagation();
-      handleSave();
-    });
-    
-    input.addEventListener('keydown', (ev) => {
-      if (ev.key === 'Enter') {
-        ev.stopPropagation();
-        handleSave();
-      }
-      if (ev.key === 'Escape') {
-        ev.stopPropagation();
-        handleCancel();
-      }
+    showPlannerCellPopup(e, row, activeDay.date, time, state, 'general', async (taskName, taskType) => {
+      const newTask = {
+        id: 't-' + Date.now(),
+        name: taskName,
+        plannedTime: time,
+        status: 'pending',
+        missedReason: '',
+        actualTime: '',
+        type: taskType || 'general'
+      };
+      activeDay.schedule.push(newTask);
+      activeDay.schedule.sort((a, b) => {
+        const indexA = state.timeIntervals.indexOf(a.plannedTime);
+        const indexB = state.timeIntervals.indexOf(b.plannedTime);
+        return indexA - indexB;
+      });
+      await state.updateDay(activeDay.date, { schedule: activeDay.schedule });
+      renderDashboard(container, state);
     });
   };
 
@@ -598,6 +594,110 @@ export function renderDashboard(container, state) {
 }
 
 function enterDashboardTaskEditMode(row, task, activeDay, state, container) {
+  // Mobile responsive full-width bottom sheet editor
+  if (window.innerWidth <= 768) {
+    const existingModal = document.querySelector('#mobile-task-edit-modal');
+    if (existingModal) existingModal.remove();
+    const existingBackdrop = document.querySelector('.modal-backdrop-fade');
+    if (existingBackdrop) existingBackdrop.remove();
+
+    const allTypes = [
+      { type: 'general', label: 'General' },
+      { type: 'study', label: 'Study' },
+      { type: 'etsy_seo', label: 'Etsy + SEO' },
+      { type: 'quran', label: 'Quran Hifz' },
+      ...state.customSections.filter(s => s.type !== 'quran').map(s => ({ type: s.type, label: s.label }))
+    ];
+
+    const backdrop = document.createElement('div');
+    backdrop.className = 'modal-backdrop-fade';
+    backdrop.style.cssText = `
+      position: fixed;
+      top: 0; left: 0; width: 100vw; height: 100vh;
+      background: rgba(0,0,0,0.45); backdrop-filter: blur(2px);
+      z-index: 9999;
+    `;
+
+    const modal = document.createElement('div');
+    modal.id = 'mobile-task-edit-modal';
+    modal.className = 'status-popup';
+    modal.innerHTML = `
+      <div style="display:flex; justify-content:space-between; align-items:center; border-bottom:1px solid var(--border-color); padding-bottom:8px; margin-bottom:12px;">
+        <span style="font-size:13px; font-weight:800; color:var(--text-primary); text-transform:uppercase;">Edit Scheduled Task</span>
+        <button id="close-mobile-edit" style="background:none; border:none; color:var(--text-muted); font-size:20px; cursor:pointer;">&times;</button>
+      </div>
+      <div style="display:flex; flex-direction:column; gap:12px;">
+        <div>
+          <label style="font-size:11px; font-weight:700; color:var(--text-muted); text-transform:uppercase;">Task Name</label>
+          <input type="text" id="mobile-edit-task-name" class="premium-input" value="${task.name}" style="width:100%; height:36px; font-size:14px; margin-top:4px;">
+        </div>
+        <div style="display:flex; gap:10px;">
+          <div style="flex:1;">
+            <label style="font-size:11px; font-weight:700; color:var(--text-muted); text-transform:uppercase;">Time Slot</label>
+            <select id="mobile-edit-slot" class="premium-select" style="width:100%; height:36px; font-size:12px; margin-top:4px; font-family:var(--font-mono);">
+              ${state.timeIntervals.map(t => `<option value="${t}" ${task.plannedTime === t ? 'selected' : ''}>${t}</option>`).join('')}
+            </select>
+          </div>
+          <div style="flex:1;">
+            <label style="font-size:11px; font-weight:700; color:var(--text-muted); text-transform:uppercase;">Category</label>
+            <select id="mobile-edit-type" class="premium-select" style="width:100%; height:36px; font-size:12px; margin-top:4px;">
+              ${allTypes.map(t => `<option value="${t.type}" ${task.type === t.type ? 'selected' : ''}>${t.label}</option>`).join('')}
+            </select>
+          </div>
+        </div>
+        <div style="display:flex; gap:10px; margin-top:8px;">
+          <button class="btn btn-secondary" id="mobile-cancel-edit" style="flex:1; justify-content:center; height:36px;">Cancel</button>
+          <button class="btn btn-primary" id="mobile-save-edit" style="flex:1; justify-content:center; height:36px; font-weight:700;">Save Changes</button>
+        </div>
+      </div>
+    `;
+
+    document.body.appendChild(backdrop);
+    document.body.appendChild(modal);
+
+    const closeModal = () => {
+      modal.remove();
+      backdrop.remove();
+    };
+    backdrop.addEventListener('click', closeModal);
+    modal.querySelector('#close-mobile-edit').addEventListener('click', closeModal);
+    modal.querySelector('#mobile-cancel-edit').addEventListener('click', closeModal);
+
+    const nameInput = modal.querySelector('#mobile-edit-task-name');
+    nameInput.focus();
+
+    modal.querySelector('#mobile-save-edit').addEventListener('click', async () => {
+      const newName = nameInput.value.trim();
+      const newSlot = modal.querySelector('#mobile-edit-slot').value;
+      const newType = modal.querySelector('#mobile-edit-type').value;
+
+      if (!newName) {
+        alert("Task name cannot be empty");
+        return;
+      }
+
+      if (newSlot !== task.plannedTime && activeDay.schedule.some(t => t.plannedTime === newSlot && t.id !== task.id)) {
+        if (!confirm(`A task is already scheduled in slot "${newSlot}". Overwrite it?`)) return;
+        activeDay.schedule = activeDay.schedule.filter(t => t.plannedTime !== newSlot || t.id === task.id);
+      }
+
+      task.name = newName;
+      task.plannedTime = newSlot;
+      task.type = newType;
+
+      activeDay.schedule.sort((a, b) => {
+        const idxA = state.timeIntervals.indexOf(a.plannedTime);
+        const idxB = state.timeIntervals.indexOf(b.plannedTime);
+        return idxA - idxB;
+      });
+
+      closeModal();
+      await state.updateDay(activeDay.date, { schedule: activeDay.schedule });
+      renderDashboard(container, state);
+    });
+    return;
+  }
+
   const originalHTML = row.innerHTML;
   
   // Custom sections map

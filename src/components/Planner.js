@@ -217,7 +217,7 @@ function renderGridSubView(container, state) {
 
   // Attach spreadsheet cell event click handlers
   container.querySelectorAll('.cell-task').forEach(cell => {
-    cell.addEventListener('dblclick', (e) => {
+    const handleCellAction = (e) => {
       // Ignore click if it's already editing
       if (cell.querySelector('input')) return;
 
@@ -229,7 +229,7 @@ function renderGridSubView(container, state) {
         // Cell already has a task, show Status Switcher overlay
         showCellStatusOverlay(e, cell, date, taskId, state);
       } else {
-        showPlannerCellPopup(e, cell, date, time, state, 'general', async (taskName) => {
+        showPlannerCellPopup(e, cell, date, time, state, 'general', async (taskName, taskType) => {
           const day = state.days.find(d => d.date === date);
           if (day) {
             const newTask = {
@@ -239,7 +239,7 @@ function renderGridSubView(container, state) {
               status: 'pending',
               missedReason: '',
               actualTime: '',
-              type: 'general'
+              type: taskType || 'general'
             };
             day.schedule.push(newTask);
             day.schedule.sort((a, b) => {
@@ -252,7 +252,16 @@ function renderGridSubView(container, state) {
           }
         });
       }
-    });
+    };
+
+    cell.addEventListener('dblclick', handleCellAction);
+    if (window.innerWidth <= 768) {
+      cell.addEventListener('click', (e) => {
+        if (state.selectedCells.length <= 1) {
+          handleCellAction(e);
+        }
+      });
+    }
   });
 
   // Restore scroll position or perform initial focus day scroll

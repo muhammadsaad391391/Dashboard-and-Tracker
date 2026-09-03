@@ -25,6 +25,27 @@ const appLoader = document.getElementById('app-loader');
 function renderApp(appState) {
   if (!appState.initialized) return;
 
+  // Preserve scroll positions before DOM modifications
+  const docScrollTop = window.scrollY || document.documentElement.scrollTop || document.body.scrollTop || 0;
+  const docScrollLeft = window.scrollX || document.documentElement.scrollLeft || document.body.scrollLeft || 0;
+  const viewScrollTop = viewContainer ? viewContainer.scrollTop : 0;
+  const viewScrollLeft = viewContainer ? viewContainer.scrollLeft : 0;
+  
+  // Track inner scroll positions of scrollable elements
+  const innerScrolls = [];
+  if (viewContainer) {
+    viewContainer.querySelectorAll('.task-list, .spreadsheet-container, .table-wrapper, #chat-messages-log').forEach((el, idx) => {
+      if (el.scrollTop > 0 || el.scrollLeft > 0) {
+        innerScrolls.push({
+          selector: el.id ? `#${el.id}` : `.${el.className.split(' ')[0]}`,
+          index: idx,
+          top: el.scrollTop,
+          left: el.scrollLeft
+        });
+      }
+    });
+  }
+
   // Toggle sidebar-collapsed class on the app container
   if (appContainer) {
     appContainer.classList.toggle('sidebar-collapsed', !!appState.sidebarCollapsed);
@@ -94,6 +115,25 @@ function renderApp(appState) {
 
   // 4. Restore selection outlines on newly rendered cells
   updateSelectionHighlights();
+
+  // 5. Restore scroll positions immediately & in next frame
+  const restoreScrollPositions = () => {
+    window.scrollTo(docScrollLeft, docScrollTop);
+    if (viewContainer) {
+      viewContainer.scrollTop = viewScrollTop;
+      viewContainer.scrollLeft = viewScrollLeft;
+      innerScrolls.forEach(item => {
+        const els = viewContainer.querySelectorAll(item.selector);
+        const target = els[item.index] || els[0];
+        if (target) {
+          target.scrollTop = item.top;
+          target.scrollLeft = item.left;
+        }
+      });
+    }
+  };
+  restoreScrollPositions();
+  requestAnimationFrame(restoreScrollPositions);
 }
 
 // Subscribe global render trigger to state changes
@@ -327,60 +367,41 @@ document.addEventListener('click', (e) => {
   updateSelectionHighlights();
 });
 
-// Mobile/Touch Drag handles gestures support
+// Mobile touch long-press detection for opening spreadsheet context menu cleanly
+let touchTimer = null;
+let touchMoved = false;
+
 document.addEventListener('touchstart', (e) => {
-  const handle = e.target.closest('.selection-handle');
-  if (!handle) return;
-  
-  e.preventDefault();
-  isDraggingHandle = true;
-}, { passive: false });
-
-document.addEventListener('touchmove', (e) => {
-  if (!isDraggingHandle || !state.selectionAnchor) return;
-  
-  e.preventDefault();
-  const touch = e.touches[0];
-  const targetEl = document.elementFromPoint(touch.clientX, touch.clientY);
-  const cell = targetEl ? targetEl.closest('.cell-task') : null;
+  const cell = e.target.closest('.cell-task');
   if (!cell) return;
+  touchMoved = false;
 
-  const colIdx = parseInt(cell.getAttribute('data-col-idx'));
-  const rowIdx = parseInt(cell.getAttribute('data-row-idx'));
-  const date = cell.getAttribute('data-date');
-  const time = cell.getAttribute('data-time');
-
-  state.selectionCursor = { date, time, colIdx, rowIdx };
-
-  const anchorCol = state.selectionAnchor.colIdx;
-  const anchorRow = state.selectionAnchor.rowIdx;
-
-  const minCol = Math.min(anchorCol, colIdx);
-  const maxCol = Math.max(anchorCol, colIdx);
-  const minRow = Math.min(anchorRow, rowIdx);
-  const maxRow = Math.max(anchorRow, rowIdx);
-
-  const newSelection = [];
-  document.querySelectorAll('.cell-task').forEach(c => {
-    const cCol = parseInt(c.getAttribute('data-col-idx'));
-    const cRow = parseInt(c.getAttribute('data-row-idx'));
-    if (cCol >= minCol && cCol <= maxCol && cRow >= minRow && cRow <= maxRow) {
-      newSelection.push({
-        date: c.getAttribute('data-date'),
-        time: c.getAttribute('data-time'),
-        taskId: c.getAttribute('data-task-id') || null,
-        colIdx: cCol,
-        rowIdx: cRow
-      });
+  touchTimer = setTimeout(() => {
+    if (!touchMoved) {
+      if (navigator.vibrate) navigator.vibrate(40);
+      const touch = e.touches ? e.touches[0] : null;
+      if (!touch) return;
+      const date = cell.getAttribute('data-date');
+      const time = cell.getAttribute('data-time');
+      const colIdx = parseInt(cell.getAttribute('data-col-idx'));
+      const rowIdx = parseInt(cell.getAttribute('data-row-idx'));
+      const taskId = cell.getAttribute('data-task-id') || null;
+      state.selectedCells = [{ date, time, taskId, colIdx, rowIdx }];
+      state.selectionAnchor = { date, time, colIdx, rowIdx };
+      updateSelectionHighlights();
+      showSpreadsheetContextMenu({ clientX: touch.clientX, clientY: touch.clientY });
     }
-  });
-  state.selectedCells = newSelection;
-  updateSelectionHighlights();
-}, { passive: false });
+  }, 500);
+}, { passive: true });
+
+document.addEventListener('touchmove', () => {
+  touchMoved = true;
+  if (touchTimer) clearTimeout(touchTimer);
+}, { passive: true });
 
 document.addEventListener('touchend', () => {
-  isDraggingHandle = false;
-});
+  if (touchTimer) clearTimeout(touchTimer);
+}, { passive: true });
 
 // Reusable Copy method (copies structure and resets status to pending)
 export function performCopy() {
@@ -552,6 +573,9 @@ function showSpreadsheetContextMenu(e) {
       <div class="context-option" data-action="edit">
         ${isTask ? '✍ Edit Task Details' : '➕ Add Task Here'}
       </div>
+      <div class="context-option" data-action="select-day">
+        📅 Select Entire Day (${selected.date})
+      </div>
       <div style="height:1px; background-color:var(--border-color); margin: 4px 0;"></div>
     `;
   }
@@ -601,6 +625,23 @@ function showSpreadsheetContextMenu(e) {
             clientX: e.clientX,
             clientY: e.clientY
           }));
+        }
+      } else if (action === 'select-day') {
+        const selected = state.selectedCells[0];
+        if (selected) {
+          const newSelection = [];
+          document.querySelectorAll(`.cell-task[data-date="${selected.date}"]`).forEach(c => {
+            newSelection.push({
+              date: c.getAttribute('data-date'),
+              time: c.getAttribute('data-time'),
+              taskId: c.getAttribute('data-task-id') || null,
+              colIdx: parseInt(c.getAttribute('data-col-idx')),
+              rowIdx: parseInt(c.getAttribute('data-row-idx'))
+            });
+          });
+          state.selectedCells = newSelection;
+          updateSelectionHighlights();
+          showToast(`Selected ${newSelection.length} slots for ${selected.date}`);
         }
       } else if (action === 'copy') {
         performCopy();
