@@ -1,6 +1,7 @@
 import { icons } from '../icons.js';
 import confetti from 'canvas-confetti';
 import { showPlannerCellPopup } from './PlannerCellPopup.js';
+import { showToast } from '../main.js';
 
 // Fixed time slots for spreadsheet grid matching the user's reference
 const TIME_SLOTS = [
@@ -16,6 +17,21 @@ export function renderPlanner(container, state) {
   if (!state.expandedDayDate) {
     state.expandedDayDate = state.getActiveDate();
   }
+
+  // Aggregate all pending tasks across categories
+  const allPendingTasks = [];
+  state.projects.forEach(p => {
+    if (p.subtasks) {
+      p.subtasks.filter(s => !s.completed).forEach(sub => {
+        allPendingTasks.push({
+          ...sub,
+          projectId: p.id,
+          projectName: p.name,
+          projectType: p.type
+        });
+      });
+    }
+  });
 
   const weekDays = state.getDaysForActiveWeek();
   const startLabel = weekDays[0] ? weekDays[0].label.replace(/, \d{4}/, '') : '';
@@ -53,12 +69,143 @@ export function renderPlanner(container, state) {
       </div>
     </div>
 
+    <!-- Collapsible Category Tasks Backlog in Daily Planner -->
+    <div class="card" style="padding: 12px 16px; margin-bottom: 20px;">
+      <div style="display:flex; justify-content:space-between; align-items:center; cursor:pointer;" id="toggle-planner-backlog-btn">
+        <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
+          <span style="font-size:14px; font-weight:800; color:var(--text-primary);">🎯 Category Tasks Backlog & Roadmap</span>
+          <span class="badge" style="background:var(--accent-glow); color:var(--accent); font-weight:800; font-size:11px; padding:2px 8px; border-radius:12px;">
+            ${allPendingTasks.length} Pending
+          </span>
+          <span style="font-size:11px; color:var(--text-muted);">(Study, Etsy, Quran, Projects)</span>
+        </div>
+        <span id="planner-backlog-toggle-icon" style="font-size:12px; color:var(--accent); font-weight:700;">Show Backlog ▾</span>
+      </div>
+
+      <div id="planner-backlog-content" style="display:none; margin-top:12px; border-top:1px solid var(--border-color); padding-top:12px;">
+        <div style="display:flex; gap:6px; margin-bottom:12px; flex-wrap:wrap;">
+          <button class="btn btn-primary btn-sm planner-cat-filter active" data-cat="all">All (${allPendingTasks.length})</button>
+          <button class="btn btn-secondary btn-sm planner-cat-filter" data-cat="study">Study (${allPendingTasks.filter(t => t.projectType === 'study').length})</button>
+          <button class="btn btn-secondary btn-sm planner-cat-filter" data-cat="etsy_seo">Etsy (${allPendingTasks.filter(t => t.projectType === 'etsy_seo').length})</button>
+          <button class="btn btn-secondary btn-sm planner-cat-filter" data-cat="quran">Quran (${allPendingTasks.filter(t => t.projectType === 'quran').length})</button>
+          ${state.customSections.filter(s => s.type !== 'quran').map(s => `
+            <button class="btn btn-secondary btn-sm planner-cat-filter" data-cat="${s.type}">${s.label} (${allPendingTasks.filter(t => t.projectType === s.type).length})</button>
+          `).join('')}
+        </div>
+
+        <div id="planner-backlog-items" style="display:flex; flex-direction:column; gap:6px; max-height:260px; overflow-y:auto; padding-right:4px;">
+          ${allPendingTasks.length === 0 ? `
+            <div style="font-size:12px; color:var(--text-muted); font-style:italic; padding:8px 0;">No pending category tasks!</div>
+          ` : allPendingTasks.map(task => {
+            const catLabel = task.projectType === 'study' ? 'Study' : task.projectType === 'etsy_seo' ? 'Etsy' : task.projectType === 'quran' ? 'Quran' : 'Project';
+            return `
+              <div class="planner-backlog-item" data-cat="${task.projectType}" style="display:flex; align-items:center; justify-content:space-between; background:var(--bg-tertiary); padding:6px 10px; border-radius:var(--radius-sm); border:1px solid var(--border-color); gap:8px;">
+                <div style="display:flex; align-items:center; gap:8px; flex:1; min-width:0;">
+                  <span class="badge" style="font-size:9px; font-weight:800; text-transform:uppercase; padding:2px 5px; border-radius:3px; background:var(--bg-secondary); color:var(--accent);">${catLabel}</span>
+                  <span style="font-size:12px; font-weight:600; color:var(--text-primary); overflow:hidden; text-overflow:ellipsis; white-space:nowrap;" title="${task.projectName}: ${task.name}">
+                    ${task.projectName}: <strong>${task.name}</strong>
+                  </span>
+                  <span style="font-size:10px; font-family:var(--font-mono); color:var(--text-muted); margin-left:auto; flex-shrink:0;">~${task.estimatedMinutes || 30}m</span>
+                </div>
+                <button class="btn btn-primary btn-sm planner-schedule-backlog-btn" data-proj-id="${task.projectId}" data-task-name="${encodeURIComponent(task.name)}" data-cat="${task.projectType}" style="height:24px; padding:0 8px; font-size:10px; font-weight:700;">
+                  ⚡ Schedule
+                </button>
+              </div>
+            `;
+          }).join('')}
+        </div>
+      </div>
+    </div>
+
     <!-- View Content Area -->
     <div id="planner-content-area"></div>
     
     <!-- Modal containers -->
     <div id="planner-modal-container"></div>
   `;
+
+  // Backlog toggle handler
+  const toggleBacklogBtn = container.querySelector('#toggle-planner-backlog-btn');
+  const backlogContent = container.querySelector('#planner-backlog-content');
+  const backlogToggleIcon = container.querySelector('#planner-backlog-toggle-icon');
+  if (toggleBacklogBtn && backlogContent) {
+    toggleBacklogBtn.addEventListener('click', () => {
+      const isHidden = backlogContent.style.display === 'none';
+      backlogContent.style.display = isHidden ? 'block' : 'none';
+      if (backlogToggleIcon) {
+        backlogToggleIcon.textContent = isHidden ? 'Hide Backlog ▴' : 'Show Backlog ▾';
+      }
+    });
+  }
+
+  // Backlog category filtering
+  container.querySelectorAll('.planner-cat-filter').forEach(tab => {
+    tab.addEventListener('click', () => {
+      container.querySelectorAll('.planner-cat-filter').forEach(t => {
+        t.classList.remove('btn-primary', 'active');
+        t.classList.add('btn-secondary');
+      });
+      tab.classList.remove('btn-secondary');
+      tab.classList.add('btn-primary', 'active');
+
+      const filterCat = tab.getAttribute('data-cat');
+      container.querySelectorAll('.planner-backlog-item').forEach(item => {
+        if (filterCat === 'all' || item.getAttribute('data-cat') === filterCat) {
+          item.style.display = 'flex';
+        } else {
+          item.style.display = 'none';
+        }
+      });
+    });
+  });
+
+  // Schedule backlog task
+  container.querySelectorAll('.planner-schedule-backlog-btn').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      const projId = Number(btn.getAttribute('data-proj-id'));
+      const taskName = decodeURIComponent(btn.getAttribute('data-task-name'));
+      const taskCat = btn.getAttribute('data-cat') || 'general';
+      const project = state.projects.find(p => p.id === projId);
+
+      const activeDate = state.getActiveDate();
+      const day = state.days.find(d => d.date === activeDate);
+      if (!day) return;
+
+      const freeSlot = state.timeIntervals.find(slot => !day.schedule.some(t => t.plannedTime === slot));
+      if (!freeSlot) {
+        alert(`No free time slots available on your schedule for ${activeDate}! Please free up a slot in the grid.`);
+        return;
+      }
+
+      const newTask = {
+        id: 't-' + Date.now(),
+        name: `${project ? project.name + ': ' : ''}${taskName}`,
+        plannedTime: freeSlot,
+        status: 'pending',
+        missedReason: '',
+        actualTime: '',
+        type: taskCat
+      };
+
+      day.schedule.push(newTask);
+      day.schedule.sort((a, b) => {
+        const idxA = state.timeIntervals.indexOf(a.plannedTime);
+        const idxB = state.timeIntervals.indexOf(b.plannedTime);
+        return idxA - idxB;
+      });
+
+      await state.updateDay(day.date, { schedule: day.schedule });
+
+      if (project) {
+        project.lastWorkedOn = Date.now();
+        await state.updateProject(projId, { lastWorkedOn: project.lastWorkedOn });
+      }
+
+      confetti({ particleCount: 50, spread: 35 });
+      showToast(`⚡ Scheduled "${taskName}" at ${freeSlot} on ${activeDate}!`);
+      renderPlanner(container, state);
+    });
+  });
 
   // Register outer navigation click listeners
   container.querySelector('#tab-subview-grid').addEventListener('click', () => {
