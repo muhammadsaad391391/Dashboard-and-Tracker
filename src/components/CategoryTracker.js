@@ -2,6 +2,7 @@ import { icons } from '../icons.js';
 import confetti from 'canvas-confetti';
 import { showPlannerCellPopup } from './PlannerCellPopup.js';
 import { showToast } from '../main.js';
+import { showEditProjectModal } from './Projects.js';
 
 export function renderCategoryTracker(container, state, categoryId, categoryLabel, categoryType, categoryIcon) {
   let savedScrollLeft = 0;
@@ -151,24 +152,101 @@ export function renderCategoryTracker(container, state, categoryId, categoryLabe
       </div>
 
       <!-- Expandable New Project Form -->
-      <div id="cat-new-proj-form" style="display:none; flex-direction:column; gap:10px; background:var(--bg-tertiary); padding:14px; border-radius:var(--radius-sm); border:1px solid var(--border-color); margin-bottom:16px;">
+      <div id="cat-new-proj-form" style="display:none; flex-direction:column; gap:12px; background:var(--bg-tertiary); padding:16px; border-radius:var(--radius-sm); border:1px solid var(--border-color); margin-bottom:16px;">
         <div style="display:flex; justify-content:space-between; align-items:center;">
-          <span style="font-size:12px; font-weight:800; color:var(--text-primary); text-transform:uppercase;">Create New ${categoryLabel} Project</span>
-          <button id="cat-close-new-proj-btn" style="background:none; border:none; color:var(--text-muted); cursor:pointer; font-size:18px;">&times;</button>
+          <span style="font-size:12px; font-weight:800; color:var(--text-primary); text-transform:uppercase; letter-spacing:0.5px;">➕ Create New ${categoryLabel} Project</span>
+          <button id="cat-close-new-proj-btn" style="background:none; border:none; color:var(--text-muted); cursor:pointer; font-size:18px; line-height:1;">&times;</button>
         </div>
+
+        <!-- Row 1: Name & Priority -->
         <div style="display:grid; grid-template-columns: 2fr 1fr; gap:10px;" class="cat-form-row">
-          <input type="text" id="cat-new-proj-name" class="premium-input" placeholder="Project name (e.g. Ophthalmology Review)..." style="height:32px; font-size:12px;">
-          <select id="cat-new-proj-priority" class="premium-select" style="height:32px; font-size:12px;">
-            <option value="medium">Medium Priority</option>
-            <option value="high" selected>High Priority</option>
-            <option value="critical">Critical Priority</option>
-            <option value="low">Low Priority</option>
-          </select>
+          <div style="display:flex; flex-direction:column; gap:4px;">
+            <label style="font-size:11px; font-weight:700; color:var(--text-secondary);">Project Name</label>
+            <input type="text" id="cat-new-proj-name" class="premium-input" placeholder="Project name (e.g. Ophthalmology Review)..." style="height:32px; font-size:12px; padding:4px 8px;">
+          </div>
+          <div style="display:flex; flex-direction:column; gap:4px;">
+            <label style="font-size:11px; font-weight:700; color:var(--text-secondary);">Manual Priority</label>
+            <select id="cat-new-proj-priority" class="premium-select" style="height:32px; font-size:12px; padding:4px 8px;">
+              <option value="low">Low Priority</option>
+              <option value="medium" selected>Medium Priority</option>
+              <option value="high">High Priority</option>
+              <option value="critical">Critical</option>
+            </select>
+          </div>
         </div>
-        <input type="text" id="cat-new-proj-goal" class="premium-input" placeholder="Goal / Milestone description..." style="height:32px; font-size:12px;">
-        <div style="display:flex; justify-content:flex-end; gap:8px;">
+
+        <!-- Row 2: Cadence & Timing / Duration -->
+        <div style="display:grid; grid-template-columns: 1fr 1fr; gap:12px; background:var(--bg-secondary); padding:12px; border-radius:var(--radius-sm); border:1px solid var(--border-color);" class="cat-form-row">
+          <div style="display:flex; flex-direction:column; gap:4px;">
+            <label style="font-size:11px; font-weight:700; color:var(--text-primary); display:flex; align-items:center; gap:6px;">
+              <span>🔁 Cadence / Recurrence</span>
+              <span style="font-size:10px; color:var(--accent); font-weight:600;">(Key Feature)</span>
+            </label>
+            <select id="cat-new-proj-cadence" class="premium-select" style="height:32px; padding:4px 8px; font-size:12px;">
+              <option value="flexible" selected>Flexible / Milestone (As needed)</option>
+              <option value="daily">Daily (Must do every single day)</option>
+              <option value="every_2_days">Every 2 Days (Alternate days)</option>
+              <option value="every_3_days">Every 3 Days (Twice a week)</option>
+              <option value="weekly">Weekly (Once a week)</option>
+            </select>
+            <span style="font-size:10px; color:var(--text-muted);" id="cat-cadence-helper-text">Milestone roadmap based on deadline and tasks.</span>
+          </div>
+          <div style="display:flex; flex-direction:column; gap:4px;">
+            <label style="font-size:11px; font-weight:700; color:var(--text-primary);">⏱ Session Timing & Duration</label>
+            <select id="cat-new-proj-duration" class="premium-select" style="height:32px; padding:4px 8px; font-size:12px;">
+              <option value="60" selected>60 minutes (1 hour)</option>
+              <option value="30">30 minutes</option>
+              <option value="45">45 minutes</option>
+              <option value="90">90 minutes (1.5 hours)</option>
+              <option value="120">120 minutes (2 hours)</option>
+              <option value="custom">✏️ Custom Timing (enter mins)...</option>
+              <option value="available">⚡ Available Time ("As much as I can when free")</option>
+            </select>
+            <div id="cat-custom-duration-wrapper" style="display:none; align-items:center; gap:6px; margin-top:2px;">
+              <input type="number" id="cat-new-proj-custom-minutes" class="premium-input" placeholder="Custom mins (e.g. 75)" min="5" max="720" style="height:28px; width:150px; font-size:12px; padding:2px 8px;">
+              <span style="font-size:11px; color:var(--text-muted); font-weight:600;">mins per session</span>
+            </div>
+            <span style="font-size:10px; color:var(--text-muted);" id="cat-new-proj-timing-helper">Fixed: Adds 60m to your daily doable capacity.</span>
+          </div>
+        </div>
+
+        <!-- Row 3: Deadline, Est Hours, Available Hours -->
+        <div style="display:grid; grid-template-columns: repeat(3, 1fr); gap:10px;" class="cat-form-row">
+          <div style="display:flex; flex-direction:column; gap:4px;">
+            <label style="font-size:11px; font-weight:700; color:var(--text-secondary);">Deadline Date (Optional)</label>
+            <input type="date" id="cat-new-proj-deadline" class="premium-input" style="height:32px; padding:4px 8px; font-size:12px;">
+          </div>
+          <div style="display:flex; flex-direction:column; gap:4px;">
+            <label style="font-size:11px; font-weight:700; color:var(--text-secondary);">Est. Total Hours Left</label>
+            <input type="number" id="cat-new-proj-hours" class="premium-input" placeholder="E.g. 20" style="height:32px; padding:4px 8px; font-size:12px;">
+          </div>
+          <div style="display:flex; flex-direction:column; gap:4px;">
+            <label style="font-size:11px; font-weight:700; color:var(--text-secondary);">Available Hours/Day</label>
+            <input type="number" id="cat-new-proj-avail" class="premium-input" placeholder="E.g. 2" style="height:32px; padding:4px 8px; font-size:12px;">
+          </div>
+        </div>
+
+        <!-- Row 4: Goal & Next Milestone -->
+        <div style="display:grid; grid-template-columns: 1fr 1fr; gap:10px;" class="cat-form-row">
+          <div style="display:flex; flex-direction:column; gap:4px;">
+            <label style="font-size:11px; font-weight:700; color:var(--text-secondary);">Ultimate Goal / Description</label>
+            <input type="text" id="cat-new-proj-goal" class="premium-input" placeholder="What does success look like for this project?" style="height:32px; font-size:12px; padding:4px 8px;">
+          </div>
+          <div style="display:flex; flex-direction:column; gap:4px;">
+            <label style="font-size:11px; font-weight:700; color:var(--text-secondary);">Next Milestone</label>
+            <input type="text" id="cat-new-proj-nextgoal" class="premium-input" placeholder="E.g. Chapter 4 Quiz, Finish module..." style="height:32px; font-size:12px; padding:4px 8px;">
+          </div>
+        </div>
+
+        <!-- Row 5: Initial Subtasks -->
+        <div style="display:flex; flex-direction:column; gap:4px;">
+          <label style="font-size:11px; font-weight:700; color:var(--text-secondary);">Initial Tasks list (comma separated, optional)</label>
+          <input type="text" id="cat-new-proj-subtasks" class="premium-input" placeholder="Task 1, Task 2, Task 3..." style="height:32px; font-size:12px; padding:4px 8px;">
+        </div>
+
+        <div style="display:flex; justify-content:flex-end; gap:8px; margin-top:4px;">
           <button class="btn btn-secondary btn-sm" id="cat-cancel-new-proj-btn">Cancel</button>
-          <button class="btn btn-primary btn-sm" id="cat-save-new-proj-btn">Save Project</button>
+          <button class="btn btn-primary btn-sm" id="cat-save-new-proj-btn" style="font-weight:700; padding:6px 14px;">Save Project</button>
         </div>
       </div>
 
@@ -182,6 +260,7 @@ export function renderCategoryTracker(container, state, categoryId, categoryLabe
       ` : `
         <div style="display:flex; flex-direction:column; gap:14px;">
           ${catProjects.map(proj => {
+            const cadence = state.getProjectCadenceInfo(proj, activeDate);
             const pendingTasks = (proj.subtasks || []).filter(s => !s.completed);
             const completedTasks = (proj.subtasks || []).filter(s => s.completed);
             const total = (proj.subtasks || []).length;
@@ -191,19 +270,33 @@ export function renderCategoryTracker(container, state, categoryId, categoryLabe
               <div class="cat-proj-card" style="background:var(--bg-tertiary); border:1px solid var(--border-color); border-radius:var(--radius-sm); padding:14px;">
                 <!-- Project Title Bar -->
                 <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px; margin-bottom:8px;">
-                  <div style="display:flex; align-items:center; gap:8px;">
+                  <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
                     <span style="font-size:14px; font-weight:800; color:var(--text-primary);">${proj.name}</span>
                     <span class="badge priority-${proj.priority || 'medium'}" style="font-size:10px; text-transform:uppercase; font-weight:700; padding:2px 6px; border-radius:4px;">${proj.priority || 'medium'}</span>
+                    <span class="cadence-badge ${cadence.badgeClass}" style="font-size:10px; padding:2px 6px; border-radius:4px;">${cadence.label}</span>
+                    <span class="cadence-status-pill ${cadence.statusClass}" style="font-size:10px; padding:2px 6px; border-radius:4px;">${cadence.statusText}</span>
+                    ${proj.durationMode === 'available' ? `
+                      <span class="cadence-badge cadence-available" style="font-size:10px; padding:2px 6px; border-radius:4px;" title="Flexible free-time project">⚡ When Free</span>
+                    ` : (proj.durationPerSessionMinutes || proj.dailyAllocationMinutes ? `
+                      <span style="font-size:10px; color:var(--text-muted); background:var(--bg-secondary); padding:2px 6px; border-radius:4px; font-family:var(--font-mono); border:1px solid var(--border-color);">⏱ ${proj.durationPerSessionMinutes || proj.dailyAllocationMinutes}m</span>
+                    ` : '')}
                   </div>
                   <div style="display:flex; align-items:center; gap:8px;">
                     <span style="font-size:11px; font-weight:700; color:var(--text-secondary);">${completedTasks.length} / ${total} tasks</span>
-                    <div style="width:70px; height:6px; background:var(--bg-secondary); border-radius:3px; overflow:hidden;">
+                    <div style="width:60px; height:6px; background:var(--bg-secondary); border-radius:3px; overflow:hidden;">
                       <div style="width:${pct}%; height:100%; background:var(--accent-gradient); border-radius:3px;"></div>
                     </div>
+                    <button class="btn btn-secondary btn-sm cat-edit-proj-btn" data-id="${proj.id}" style="height:26px; padding:0 8px; font-size:11px; gap:4px;" title="Edit Project">
+                      ${icons.edit}
+                    </button>
+                    <button class="btn btn-secondary btn-sm cat-delete-proj-btn" data-id="${proj.id}" style="height:26px; padding:0 8px; font-size:11px; color:var(--danger);" title="Delete Project">
+                      ${icons.trash}
+                    </button>
                   </div>
                 </div>
 
-                ${proj.goal ? `<div style="font-size:11px; color:var(--text-muted); margin-bottom:10px;">🎯 ${proj.goal}</div>` : ''}
+                ${proj.goal ? `<div style="font-size:11px; color:var(--text-muted); margin-bottom:4px;">🎯 ${proj.goal}</div>` : ''}
+                ${proj.nextGoal ? `<div style="font-size:11px; color:var(--text-secondary); margin-bottom:6px;">🚩 <strong>Next Milestone:</strong> ${proj.nextGoal} ${proj.deadline ? `<span style="font-size:10px; color:var(--text-muted); margin-left:8px;">📅 Due: ${proj.deadline}</span>` : ''}</div>` : (proj.deadline ? `<div style="font-size:11px; color:var(--text-muted); margin-bottom:6px;">📅 Due: ${proj.deadline}</div>` : '')}
 
                 <!-- Quick Add Task Row -->
                 <div style="display:flex; gap:6px; margin-bottom:10px;">
@@ -368,32 +461,106 @@ export function renderCategoryTracker(container, state, categoryId, categoryLabe
   if (closeNewProjBtn) closeNewProjBtn.addEventListener('click', closeForm);
   if (cancelNewProjBtn) cancelNewProjBtn.addEventListener('click', closeForm);
 
+  // Duration & Cadence dynamic listeners in New Project Form
+  const catCadenceSelect = container.querySelector('#cat-new-proj-cadence');
+  const catCadenceHelper = container.querySelector('#cat-cadence-helper-text');
+  if (catCadenceSelect && catCadenceHelper) {
+    catCadenceSelect.addEventListener('change', () => {
+      const val = catCadenceSelect.value;
+      if (val === 'daily') {
+        catCadenceHelper.textContent = "Must complete a session every single day. Boosts priority when pending.";
+      } else if (val === 'every_2_days') {
+        catCadenceHelper.textContent = "Alternate days cadence. Boosts priority when 2+ days have passed.";
+      } else if (val === 'every_3_days') {
+        catCadenceHelper.textContent = "Twice a week cadence. Boosts priority after 3 days without activity.";
+      } else if (val === 'weekly') {
+        catCadenceHelper.textContent = "Once a week cadence. Boosts priority if 7+ days pass without work.";
+      } else {
+        catCadenceHelper.textContent = "Milestone roadmap based on deadline and tasks.";
+      }
+    });
+  }
+
+  const catDurationSelect = container.querySelector('#cat-new-proj-duration');
+  const catCustomDurationWrapper = container.querySelector('#cat-custom-duration-wrapper');
+  const catTimingHelper = container.querySelector('#cat-new-proj-timing-helper');
+  if (catDurationSelect) {
+    catDurationSelect.addEventListener('change', () => {
+      const val = catDurationSelect.value;
+      if (catCustomDurationWrapper) {
+        catCustomDurationWrapper.style.display = val === 'custom' ? 'flex' : 'none';
+      }
+      if (catTimingHelper) {
+        if (val === 'available') {
+          catTimingHelper.textContent = 'Available: Flexible free time, won\'t consume rigid daily commitment.';
+        } else if (val === 'custom') {
+          catTimingHelper.textContent = 'Custom: Adds exact minutes to daily commitment.';
+        } else {
+          catTimingHelper.textContent = `Fixed: Adds ${val}m to your daily doable capacity.`;
+        }
+      }
+    });
+  }
+
   // 2. Save New Project
   const saveNewProjBtn = container.querySelector('#cat-save-new-proj-btn');
   if (saveNewProjBtn) {
     saveNewProjBtn.addEventListener('click', async () => {
       const name = container.querySelector('#cat-new-proj-name').value.trim();
       const priority = container.querySelector('#cat-new-proj-priority').value;
-      const goal = container.querySelector('#cat-new-proj-goal').value.trim();
+      const cadence = catCadenceSelect ? catCadenceSelect.value : 'flexible';
+      const timingVal = catDurationSelect ? catDurationSelect.value : '60';
+
+      let durationMode = 'fixed';
+      let durationPerSessionMinutes = 60;
+      if (timingVal === 'available') {
+        durationMode = 'available';
+        durationPerSessionMinutes = 0;
+      } else if (timingVal === 'custom') {
+        durationMode = 'fixed';
+        durationPerSessionMinutes = Number(container.querySelector('#cat-new-proj-custom-minutes')?.value) || 60;
+      } else {
+        durationMode = 'fixed';
+        durationPerSessionMinutes = Number(timingVal) || 60;
+      }
+
+      const deadline = container.querySelector('#cat-new-proj-deadline')?.value || '';
+      const hours = Number(container.querySelector('#cat-new-proj-hours')?.value) || 0;
+      const avail = Number(container.querySelector('#cat-new-proj-avail')?.value) || 0;
+      const goal = container.querySelector('#cat-new-proj-goal')?.value.trim() || '';
+      const nextGoal = container.querySelector('#cat-new-proj-nextgoal')?.value.trim() || '';
+      const subtasksRaw = container.querySelector('#cat-new-proj-subtasks')?.value.trim() || '';
 
       if (!name) {
         alert("Please enter project name!");
         return;
       }
 
+      const subtaskNames = subtasksRaw ? subtasksRaw.split(',').map(s => s.trim()).filter(Boolean) : [];
+      const subtasks = subtaskNames.map((st, i) => ({
+        id: 'sub-' + Date.now() + '-' + i,
+        name: st,
+        estimatedMinutes: Math.min(45, durationPerSessionMinutes || 45),
+        completed: false
+      }));
+
       const newProj = {
         name,
         status: 'In progress',
         priority,
         type: categoryType,
+        frequency: cadence,
+        durationMode,
+        durationPerSessionMinutes,
+        targetSessionsPerWeek: cadence === 'daily' ? 7 : cadence === 'weekly' ? 1 : 3,
+        deadline,
         goal,
-        nextGoal: '',
-        deadline: '',
-        estimatedHours: 20,
-        availableHoursPerDay: 2,
-        isDailyAllocation: false,
-        dailyAllocationMinutes: 0,
-        subtasks: []
+        nextGoal,
+        estimatedHours: hours,
+        availableHoursPerDay: avail,
+        isDailyAllocation: cadence === 'daily' && durationMode === 'fixed',
+        dailyAllocationMinutes: durationPerSessionMinutes,
+        subtasks
       };
 
       await state.addProject(newProj);
@@ -402,6 +569,32 @@ export function renderCategoryTracker(container, state, categoryId, categoryLabe
       renderCategoryTracker(container, state, categoryId, categoryLabel, categoryType, categoryIcon);
     });
   }
+
+  // Edit Project Button
+  container.querySelectorAll('.cat-edit-proj-btn').forEach(btn => {
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const projId = Number(btn.getAttribute('data-id'));
+      showEditProjectModal(projId, state, () => {
+        renderCategoryTracker(container, state, categoryId, categoryLabel, categoryType, categoryIcon);
+      });
+    });
+  });
+
+  // Delete Project Button
+  container.querySelectorAll('.cat-delete-proj-btn').forEach(btn => {
+    btn.addEventListener('click', async (e) => {
+      e.stopPropagation();
+      const projId = Number(btn.getAttribute('data-id'));
+      const project = state.projects.find(p => p.id === projId);
+      const projName = project ? `"${project.name}"` : 'this project';
+      if (confirm(`Are you sure you want to permanently delete ${projName}? This will not return.`)) {
+        await state.deleteProject(projId);
+        showToast("Project deleted successfully");
+        renderCategoryTracker(container, state, categoryId, categoryLabel, categoryType, categoryIcon);
+      }
+    });
+  });
 
   // 3. Add Task to Project
   container.querySelectorAll('.cat-add-task-btn').forEach(btn => {

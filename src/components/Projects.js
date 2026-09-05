@@ -682,15 +682,21 @@ export function renderProjects(container, state) {
                   <span style="font-size:10px; color:var(--text-muted);" id="cadence-helper-text">Milestone roadmap based on deadline and tasks.</span>
                 </div>
                 <div style="display:flex; flex-direction:column; gap:4px;">
-                  <label style="font-size:11px; font-weight:700; color:var(--text-primary);">⏱ Session Duration (per session)</label>
+                  <label style="font-size:11px; font-weight:700; color:var(--text-primary);">⏱ Session Timing & Duration</label>
                   <select id="new-proj-session-duration" class="premium-select" style="height:32px; padding:4px 8px;">
+                    <option value="60" selected>60 minutes (1 hour)</option>
                     <option value="30">30 minutes</option>
                     <option value="45">45 minutes</option>
-                    <option value="60" selected>60 minutes (1 hour)</option>
                     <option value="90">90 minutes (1.5 hours)</option>
                     <option value="120">120 minutes (2 hours)</option>
+                    <option value="custom">✏️ Custom Timing (enter mins)...</option>
+                    <option value="available">⚡ Available Time ("As much as I can when free")</option>
                   </select>
-                  <span style="font-size:10px; color:var(--text-muted);">Allocated to your daily doable capacity.</span>
+                  <div id="new-proj-custom-duration-wrapper" style="display:none; align-items:center; gap:6px; margin-top:2px;">
+                    <input type="number" id="new-proj-custom-minutes" class="premium-input" placeholder="Custom mins (e.g. 75)" min="5" max="720" style="height:28px; width:150px; font-size:12px; padding:2px 8px;">
+                    <span style="font-size:11px; color:var(--text-muted); font-weight:600;">mins per session</span>
+                  </div>
+                  <span style="font-size:10px; color:var(--text-muted);" id="new-proj-timing-helper">Fixed: Adds 60m to your daily doable capacity.</span>
                 </div>
               </div>
 
@@ -854,6 +860,28 @@ function bindProjectsEvents(container, state, processedProjects) {
     };
     cadenceSelect.addEventListener('change', () => {
       cadenceHelperText.textContent = helperMap[cadenceSelect.value] || '';
+    });
+  }
+
+  // Session duration / timing mode change in New Project form
+  const durationSelect = container.querySelector('#new-proj-session-duration');
+  const customDurationWrapper = container.querySelector('#new-proj-custom-duration-wrapper');
+  const customDurationInput = container.querySelector('#new-proj-custom-minutes');
+  const timingHelper = container.querySelector('#new-proj-timing-helper');
+
+  if (durationSelect) {
+    durationSelect.addEventListener('change', () => {
+      const val = durationSelect.value;
+      if (val === 'custom') {
+        if (customDurationWrapper) customDurationWrapper.style.display = 'flex';
+        if (timingHelper) timingHelper.textContent = 'Fixed: Enter custom minutes added to daily doable capacity.';
+      } else if (val === 'available') {
+        if (customDurationWrapper) customDurationWrapper.style.display = 'none';
+        if (timingHelper) timingHelper.textContent = 'Flexible buffer: Spend available free time whenever you are free (not counted in mandatory fixed doables).';
+      } else {
+        if (customDurationWrapper) customDurationWrapper.style.display = 'none';
+        if (timingHelper) timingHelper.textContent = `Fixed: Adds ${val}m to your daily doable capacity.`;
+      }
     });
   }
 
@@ -1145,7 +1173,20 @@ function bindProjectsEvents(container, state, processedProjects) {
       const priority = container.querySelector('#new-proj-priority').value;
       const type = container.querySelector('#new-proj-type').value;
       const frequency = cadenceSelect ? cadenceSelect.value : 'flexible';
-      const durationPerSessionMinutes = Number(container.querySelector('#new-proj-session-duration')?.value) || 60;
+      const timingVal = durationSelect ? durationSelect.value : '60';
+      let durationMode = 'fixed';
+      let durationPerSessionMinutes = 60;
+      if (timingVal === 'available') {
+        durationMode = 'available';
+        durationPerSessionMinutes = 0;
+      } else if (timingVal === 'custom') {
+        durationMode = 'fixed';
+        durationPerSessionMinutes = Number(customDurationInput ? customDurationInput.value : '60') || 60;
+      } else {
+        durationMode = 'fixed';
+        durationPerSessionMinutes = Number(timingVal) || 60;
+      }
+
       const deadline = container.querySelector('#new-proj-deadline').value;
       const hours = Number(container.querySelector('#new-proj-hours').value) || 0;
       const avail = Number(container.querySelector('#new-proj-avail').value) || 0;
@@ -1173,6 +1214,7 @@ function bindProjectsEvents(container, state, processedProjects) {
         priority,
         type,
         frequency,
+        durationMode,
         durationPerSessionMinutes,
         targetSessionsPerWeek: frequency === 'daily' ? 7 : frequency === 'weekly' ? 1 : 3,
         deadline,
@@ -1181,7 +1223,7 @@ function bindProjectsEvents(container, state, processedProjects) {
         estimatedHours: hours,
         availableHoursPerDay: avail,
         status: 'In progress',
-        isDailyAllocation: frequency === 'daily',
+        isDailyAllocation: frequency === 'daily' && durationMode === 'fixed',
         dailyAllocationMinutes: durationPerSessionMinutes,
         subtasks
       });
@@ -1460,7 +1502,9 @@ export function showEditProjectModal(projId, state, container) {
     padding: 16px;
   `;
 
-  const customTypes = state.customSections || [];
+  const isAvailable = project.durationMode === 'available';
+  const isPreset = [30, 45, 60, 90, 120].includes(project.durationPerSessionMinutes || project.dailyAllocationMinutes);
+  const isCustom = !isAvailable && !isPreset && (project.durationPerSessionMinutes > 0 || project.dailyAllocationMinutes > 0);
 
   backdrop.innerHTML = `
     <div style="background: var(--bg-secondary); border: 1px solid var(--border-color); border-radius: var(--radius-md); width: 100%; max-width: 520px; max-height: 90vh; overflow-y: auto; box-shadow: var(--shadow-lg); padding: 20px; display: flex; flex-direction: column; gap: 16px;">
@@ -1513,14 +1557,20 @@ export function showEditProjectModal(projId, state, container) {
           </div>
 
           <div>
-            <label style="font-size: 11px; font-weight: 700; color: var(--text-primary); text-transform: uppercase; display: block; margin-bottom: 4px;">⏱ Session Duration</label>
+            <label style="font-size: 11px; font-weight: 700; color: var(--text-primary); text-transform: uppercase; display: block; margin-bottom: 4px;">⏱ Session Timing & Duration</label>
             <select id="modal-edit-proj-duration" class="premium-select" style="width: 100%; height: 32px; font-size: 12px;">
-              <option value="30" ${(project.durationPerSessionMinutes === 30 || project.dailyAllocationMinutes === 30) ? 'selected' : ''}>30 mins</option>
-              <option value="45" ${(project.durationPerSessionMinutes === 45 || project.dailyAllocationMinutes === 45) ? 'selected' : ''}>45 mins</option>
-              <option value="60" ${(!project.durationPerSessionMinutes || project.durationPerSessionMinutes === 60 || project.dailyAllocationMinutes === 60) ? 'selected' : ''}>60 mins (1 hr)</option>
-              <option value="90" ${(project.durationPerSessionMinutes === 90 || project.dailyAllocationMinutes === 90) ? 'selected' : ''}>90 mins (1.5 hr)</option>
-              <option value="120" ${(project.durationPerSessionMinutes === 120 || project.dailyAllocationMinutes === 120) ? 'selected' : ''}>120 mins (2 hr)</option>
+              <option value="60" ${(!isAvailable && !isCustom && (project.durationPerSessionMinutes === 60 || project.dailyAllocationMinutes === 60)) ? 'selected' : ''}>60 mins (1 hr)</option>
+              <option value="30" ${(!isAvailable && (project.durationPerSessionMinutes === 30 || project.dailyAllocationMinutes === 30)) ? 'selected' : ''}>30 mins</option>
+              <option value="45" ${(!isAvailable && (project.durationPerSessionMinutes === 45 || project.dailyAllocationMinutes === 45)) ? 'selected' : ''}>45 mins</option>
+              <option value="90" ${(!isAvailable && (project.durationPerSessionMinutes === 90 || project.dailyAllocationMinutes === 90)) ? 'selected' : ''}>90 mins (1.5 hr)</option>
+              <option value="120" ${(!isAvailable && (project.durationPerSessionMinutes === 120 || project.dailyAllocationMinutes === 120)) ? 'selected' : ''}>120 mins (2 hr)</option>
+              <option value="custom" ${isCustom ? 'selected' : ''}>✏️ Custom Timing...</option>
+              <option value="available" ${isAvailable ? 'selected' : ''}>⚡ Available Time ("When free")</option>
             </select>
+            <div id="modal-edit-proj-custom-wrapper" style="display:${isCustom ? 'flex' : 'none'}; align-items:center; gap:6px; margin-top:4px;">
+              <input type="number" id="modal-edit-proj-custom-minutes" class="premium-input" value="${isCustom ? (project.durationPerSessionMinutes || project.dailyAllocationMinutes) : ''}" placeholder="Custom mins" min="5" max="720" style="width:110px; height:26px; font-size:11px; padding:2px 6px;">
+              <span style="font-size:10px; color:var(--text-muted);">mins</span>
+            </div>
           </div>
         </div>
 
@@ -1584,13 +1634,36 @@ export function showEditProjectModal(projId, state, container) {
     if (e.target === backdrop) closeModal();
   });
 
+  // Toggle custom minutes wrapper
+  const modalDurationSelect = backdrop.querySelector('#modal-edit-proj-duration');
+  const modalCustomWrapper = backdrop.querySelector('#modal-edit-proj-custom-wrapper');
+  if (modalDurationSelect && modalCustomWrapper) {
+    modalDurationSelect.addEventListener('change', () => {
+      modalCustomWrapper.style.display = modalDurationSelect.value === 'custom' ? 'flex' : 'none';
+    });
+  }
+
+  const refreshView = () => {
+    if (container && typeof container === 'function') {
+      container();
+    } else if (container && container.nodeType) {
+      if (container.querySelector('#available-time-select, #focus-plan-list-area')) {
+        renderProjects(container, state);
+      } else {
+        state.notify();
+      }
+    } else {
+      state.notify();
+    }
+  };
+
   // Delete Project from within modal
   backdrop.querySelector('#modal-delete-proj-btn').addEventListener('click', async () => {
     if (confirm(`Are you sure you want to permanently delete "${project.name}"? This will not return.`)) {
       closeModal();
       await state.deleteProject(projId);
       showToast("Project deleted successfully");
-      renderProjects(container, state);
+      refreshView();
     }
   });
 
@@ -1603,15 +1676,28 @@ export function showEditProjectModal(projId, state, container) {
     }
 
     const frequency = backdrop.querySelector('#modal-edit-proj-cadence').value;
-    const durationPerSessionMinutes = Number(backdrop.querySelector('#modal-edit-proj-duration').value) || 60;
+    const timingVal = backdrop.querySelector('#modal-edit-proj-duration').value;
+    let durationMode = 'fixed';
+    let durationPerSessionMinutes = 60;
+    if (timingVal === 'available') {
+      durationMode = 'available';
+      durationPerSessionMinutes = 0;
+    } else if (timingVal === 'custom') {
+      durationMode = 'fixed';
+      durationPerSessionMinutes = Number(backdrop.querySelector('#modal-edit-proj-custom-minutes')?.value) || 60;
+    } else {
+      durationMode = 'fixed';
+      durationPerSessionMinutes = Number(timingVal) || 60;
+    }
 
     const updates = {
       name,
       type: backdrop.querySelector('#modal-edit-proj-type').value,
       priority: backdrop.querySelector('#modal-edit-proj-priority').value,
       frequency,
+      durationMode,
       durationPerSessionMinutes,
-      isDailyAllocation: frequency === 'daily',
+      isDailyAllocation: frequency === 'daily' && durationMode === 'fixed',
       dailyAllocationMinutes: durationPerSessionMinutes,
       status: backdrop.querySelector('#modal-edit-proj-status').value,
       deadline: backdrop.querySelector('#modal-edit-proj-deadline').value,
@@ -1625,6 +1711,6 @@ export function showEditProjectModal(projId, state, container) {
     closeModal();
     await state.updateProject(projId, updates);
     showToast("Project updated successfully");
-    renderProjects(container, state);
+    refreshView();
   });
 }

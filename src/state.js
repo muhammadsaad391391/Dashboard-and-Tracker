@@ -814,6 +814,7 @@ class AppState {
   // Project Hub Actions
   async addProject(project) {
     if (!db.projects) return;
+    const durationMode = project.durationMode || (project.frequency === 'daily' && project.durationPerSessionMinutes === 0 ? 'available' : 'fixed');
     const cleanProj = {
       name: project.name || 'Untitled Project',
       goal: project.goal || '',
@@ -828,7 +829,8 @@ class AppState {
       isDailyAllocation: !!project.isDailyAllocation,
       dailyAllocationMinutes: Number(project.dailyAllocationMinutes) || 0,
       frequency: project.frequency || (project.isDailyAllocation ? 'daily' : 'flexible'),
-      durationPerSessionMinutes: Number(project.durationPerSessionMinutes) || (project.dailyAllocationMinutes || 60),
+      durationMode: durationMode,
+      durationPerSessionMinutes: durationMode === 'available' ? 0 : (Number(project.durationPerSessionMinutes) || (project.dailyAllocationMinutes || 60)),
       targetSessionsPerWeek: Number(project.targetSessionsPerWeek) || (project.frequency === 'daily' ? 7 : project.frequency === 'every_2_days' ? 3 : project.frequency === 'every_3_days' ? 2 : project.frequency === 'weekly' ? 1 : 0),
       lastCompletedDate: project.lastCompletedDate || '',
       completedDates: project.completedDates || [],
@@ -848,6 +850,7 @@ class AppState {
     const day = this.days.find(d => d.date === activeDate);
 
     const freq = project.frequency || (project.isDailyAllocation ? 'daily' : 'flexible');
+    const isAvailableTime = project.durationMode === 'available';
     
     // Check if scheduled today in day.schedule
     const prefix = project.name + ':';
@@ -856,6 +859,16 @@ class AppState {
 
     // Check if recorded in completedDates or lastCompletedDate
     const isMarkedDoneToday = isCompletedToday || (project.completedDates && project.completedDates.includes(activeDate)) || (project.lastCompletedDate === activeDate);
+
+    if (isAvailableTime) {
+      if (isMarkedDoneToday) {
+        return { freq, label: freq === 'daily' ? 'Daily (Free Time)' : 'When Free', badgeClass: 'cadence-available', statusText: 'Done Today ✅', isDue: false, isCompleted: true, urgencyBoost: 0, isAvailableTime: true };
+      } else if (isScheduledToday) {
+        return { freq, label: freq === 'daily' ? 'Daily (Free Time)' : 'When Free', badgeClass: 'cadence-available', statusText: 'Scheduled Today 🕒', isDue: true, isCompleted: false, urgencyBoost: 60, isAvailableTime: true };
+      } else {
+        return { freq, label: freq === 'daily' ? 'Daily (Free Time)' : 'When Free', badgeClass: 'cadence-available', statusText: 'When Free ⚡', isDue: true, isCompleted: false, urgencyBoost: 65, isAvailableTime: true };
+      }
+    }
 
     if (freq === 'daily') {
       if (isMarkedDoneToday) {
@@ -937,6 +950,8 @@ class AppState {
       if (p.status === 'Completed' || p.status === 'Paused') return;
       const freq = p.frequency || (p.isDailyAllocation ? 'daily' : 'flexible');
       if (freq === 'daily') {
+        // Available Time projects do NOT consume rigid daily committed doables
+        if (p.durationMode === 'available') return;
         dailyProjectCommitmentMinutes += (p.durationPerSessionMinutes || p.dailyAllocationMinutes || 60);
       }
     });

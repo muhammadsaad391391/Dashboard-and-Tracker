@@ -2165,6 +2165,12 @@ html.light .theme-switch-thumb {
   border: 1px solid var(--border-color);
 }
 
+.cadence-badge.cadence-available {
+  background: rgba(16, 185, 129, 0.12);
+  color: #10b981;
+  border: 1px solid rgba(16, 185, 129, 0.3);
+}
+
 /* Cadence Real-time Status Badges */
 .cadence-status-pill {
   font-size: 11px;
@@ -2242,5 +2248,11 @@ html.light .theme-switch-thumb {
   box-shadow: 0 10px 25px rgba(99, 102, 241, 0.15);
   position: relative;
   overflow: hidden;
+}
+
+@media (max-width: 600px) {
+  .cat-form-row {
+    grid-template-columns: 1fr !important;
+  }
 }
 
