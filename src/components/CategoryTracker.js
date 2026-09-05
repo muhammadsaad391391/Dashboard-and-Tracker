@@ -138,7 +138,12 @@ export function renderCategoryTracker(container, state, categoryId, categoryLabe
             </span>
           ` : ''}
         </div>
-        <div style="display:flex; gap:8px; align-items:center;">
+        <div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
+          ${totalPendingTasks + totalCompletedTasks > 0 ? `
+            <button class="btn btn-danger btn-sm" id="cat-clear-all-tasks-btn" style="font-size:11px; gap:4px; padding:4px 8px;" title="Remove all tasks in ${categoryLabel}">
+              🗑 Clear All Tasks
+            </button>
+          ` : ''}
           <button class="btn btn-primary btn-sm" id="cat-toggle-new-proj-btn" style="font-size:11px; gap:4px;">
             + New ${categoryLabel} Project
           </button>
@@ -331,6 +336,18 @@ export function renderCategoryTracker(container, state, categoryId, categoryLabe
       });
     }
   });
+
+  // Clear All Tasks in Category
+  const clearAllCatTasksBtn = container.querySelector('#cat-clear-all-tasks-btn');
+  if (clearAllCatTasksBtn) {
+    clearAllCatTasksBtn.addEventListener('click', async () => {
+      if (confirm(`Are you sure you want to remove all tasks in ${categoryLabel}? This will clear all tasks across ${categoryLabel} projects.`)) {
+        await state.clearCategoryTasks(categoryType);
+        showToast(`Cleared all tasks in ${categoryLabel}`);
+        renderCategoryTracker(container, state, categoryId, categoryLabel, categoryType, categoryIcon);
+      }
+    });
+  }
 
   // 1. Toggle New Project Form
   const toggleNewProjBtn = container.querySelector('#cat-toggle-new-proj-btn');

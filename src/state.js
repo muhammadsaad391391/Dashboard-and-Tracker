@@ -289,10 +289,18 @@ class AppState {
 
     if (db.projects) {
       this.projects = await db.projects.toArray();
-      if (this.projects.length === 0) {
-        const starterProjects = this.getDefaultStarterProjects();
-        await db.projects.bulkAdd(starterProjects);
-        this.projects = await db.projects.toArray();
+      
+      // One-time clear of seeded tasks as requested by the user
+      const clearedTasksSetting = await db.settings.get('cleared_category_tasks_user_req_v1');
+      if (!clearedTasksSetting) {
+        for (const p of this.projects) {
+          p.subtasks = [];
+          await db.projects.update(p.id, { subtasks: [] });
+        }
+        await db.settings.put({ key: 'cleared_category_tasks_user_req_v1', value: true });
+        if (this.syncEnabled) {
+          setTimeout(() => this.pushToCloud().catch(() => {}), 500);
+        }
       }
     } else {
       this.projects = [];
@@ -745,7 +753,7 @@ class AppState {
           await db.nonNegotiables.bulkAdd(finalNN);
 
           if (db.projects) {
-            const finalProjects = (data.projects && data.projects.length > 0) ? data.projects : this.getDefaultStarterProjects();
+            const finalProjects = Array.isArray(data.projects) ? data.projects : [];
             await db.projects.bulkAdd(finalProjects);
           }
         });
@@ -831,6 +839,10 @@ class AppState {
     if (!db.projects) return;
     const projId = Number(id);
     await db.projects.update(projId, updates);
+    const p = this.projects.find(proj => proj.id === projId);
+    if (p) {
+      Object.assign(p, updates);
+    }
     await this.fetchData();
     if (this.syncEnabled) await this.pushToCloud();
     this.notify();
@@ -840,9 +852,36 @@ class AppState {
     if (!db.projects) return;
     const projId = Number(id);
     await db.projects.delete(projId);
+    this.projects = this.projects.filter(p => p.id !== projId);
     await this.fetchData();
     if (this.syncEnabled) await this.pushToCloud();
     this.notify();
+  }
+
+  async clearCategoryTasks(categoryType) {
+    if (!db.projects) return;
+    for (const p of this.projects) {
+      if (!categoryType || categoryType === 'all' || p.type === categoryType) {
+        p.subtasks = [];
+        await db.projects.update(p.id, { subtasks: [] });
+      }
+    }
+    await this.fetchData();
+    if (this.syncEnabled) await this.pushToCloud();
+    this.notify();
+  }
+
+  async clearProjectTasks(projectId) {
+    if (!db.projects) return;
+    const projId = Number(projectId);
+    const p = this.projects.find(proj => proj.id === projId);
+    if (p) {
+      p.subtasks = [];
+      await db.projects.update(projId, { subtasks: [] });
+      await this.fetchData();
+      if (this.syncEnabled) await this.pushToCloud();
+      this.notify();
+    }
   }
 
   getDefaultStarterProjects() {

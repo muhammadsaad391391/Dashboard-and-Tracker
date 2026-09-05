@@ -1,5 +1,6 @@
 import { icons } from '../icons.js';
 import confetti from 'canvas-confetti';
+import { showToast } from '../main.js';
 
 export function getDailyAllocationStats(proj, state) {
   const activeDate = state.getActiveDate();
@@ -28,10 +29,17 @@ export function getProjectDetailsContentHTML(proj, state) {
       
       <!-- Subtasks Section -->
       <div>
-        <span style="font-size:12px; font-weight:800; text-transform:uppercase; letter-spacing:0.05em; color:var(--text-secondary);">
-          ${proj.isDailyAllocation ? 'Daily Allocation Progress' : 'Subtasks & Roadmap'}
-        </span>
-        <div style="margin-top:8px;">
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
+          <span style="font-size:12px; font-weight:800; text-transform:uppercase; letter-spacing:0.05em; color:var(--text-secondary);">
+            ${proj.isDailyAllocation ? 'Daily Allocation Progress' : `Subtasks & Roadmap (${(proj.subtasks || []).length})`}
+          </span>
+          ${(!proj.isDailyAllocation && proj.subtasks && proj.subtasks.length > 0) ? `
+            <button class="btn btn-danger btn-sm clear-proj-tasks-btn" data-proj-id="${proj.id}" style="font-size:10px; height:22px; padding:0 8px;" title="Remove all tasks from this project">
+              🗑 Clear All Tasks
+            </button>
+          ` : ''}
+        </div>
+        <div>
           ${proj.isDailyAllocation ? `
             <div style="background-color:var(--bg-tertiary); padding:16px; border-radius:var(--radius-sm); border:1px solid var(--border-color); display:flex; flex-direction:column; gap:8px;">
               <div style="display:flex; justify-content:space-between; align-items:center;">
@@ -53,10 +61,16 @@ export function getProjectDetailsContentHTML(proj, state) {
               ${(!proj.subtasks || proj.subtasks.length === 0) ? `
                 <span style="font-size:12px; color:var(--text-muted); font-style:italic;">No tasks added to this project yet. Add one below!</span>
               ` : proj.subtasks.map((sub, sIdx) => `
-                <div style="display:flex; align-items:center; gap:8px;">
+                <div style="display:flex; align-items:center; gap:8px; background:var(--bg-tertiary); padding:6px 10px; border-radius:var(--radius-sm); border:1px solid var(--border-color);" class="subtask-row" data-proj-id="${proj.id}" data-idx="${sIdx}">
                   <input type="checkbox" class="subtask-checkbox" data-proj-id="${proj.id}" data-idx="${sIdx}" ${sub.completed ? 'checked' : ''} style="width:16px; height:16px; cursor:pointer;">
-                  <span style="font-size:13px; ${sub.completed ? 'text-decoration:line-through; color:var(--text-muted);' : 'font-weight:600;'}">${sub.name}</span>
-                  <span style="font-size:10px; color:var(--text-muted); font-family:var(--font-mono); margin-left:auto; background:var(--bg-tertiary); padding:2px 6px; border-radius:4px;">~${sub.estimatedMinutes || 30} mins</span>
+                  <span style="font-size:13px; flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; ${sub.completed ? 'text-decoration:line-through; color:var(--text-muted);' : 'font-weight:600; color:var(--text-primary);'}" class="subtask-name-text">${sub.name}</span>
+                  <span style="font-size:10px; color:var(--text-muted); font-family:var(--font-mono); background:var(--bg-secondary); padding:2px 6px; border-radius:4px; flex-shrink:0;">~${sub.estimatedMinutes || 30} mins</span>
+                  <button class="btn btn-secondary btn-sm edit-subtask-btn" data-proj-id="${proj.id}" data-idx="${sIdx}" style="padding:2px 6px; height:24px; font-size:11px;" title="Edit Task">
+                    ${icons.edit}
+                  </button>
+                  <button class="btn btn-danger btn-sm delete-subtask-btn" data-proj-id="${proj.id}" data-idx="${sIdx}" style="padding:2px 6px; height:24px; font-size:11px;" title="Delete Task">
+                    ${icons.trash}
+                  </button>
                 </div>
               `).join('')}
             </div>
@@ -319,7 +333,24 @@ export function renderProjects(container, state) {
 
           <!-- Project Queue & Health Table -->
           <div class="card">
-            <div class="card-title">📊 Project Queue & Health</div>
+            <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px; margin-bottom:14px;">
+              <div class="card-title" style="margin-bottom:0;">📊 Project Queue & Health</div>
+              <div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
+                <select id="proj-category-filter-select" class="premium-select" style="height:28px; font-size:12px; padding:2px 8px;">
+                  <option value="all">All Categories</option>
+                  <option value="study">Study</option>
+                  <option value="etsy_seo">Etsy + SEO</option>
+                  <option value="quran">Quran Hifz</option>
+                  <option value="flexible">General / Flexible</option>
+                  ${(state.customSections || []).filter(s => s.type !== 'quran').map(s => `
+                    <option value="${s.type}">${s.label}</option>
+                  `).join('')}
+                </select>
+                <button class="btn btn-danger btn-sm" id="clear-cat-tasks-btn" style="height:28px; font-size:11px; padding:0 10px;" title="Remove all tasks from projects in selected category">
+                  🗑 Clear All Tasks in Category
+                </button>
+              </div>
+            </div>
             
             <!-- Desktop Table View -->
             <div class="desktop-only-table-wrapper" style="overflow-x:auto;">
@@ -340,7 +371,7 @@ export function renderProjects(container, state) {
                   ` : processedProjects.map(proj => {
                     const priorityClass = proj.priority === 'critical' ? 'badge-danger' : proj.priority === 'high' ? 'badge-warning' : 'badge-info';
                     return `
-                      <tr style="border-bottom:1px solid var(--border-color);" data-proj-row-id="${proj.id}">
+                      <tr style="border-bottom:1px solid var(--border-color);" data-proj-row-id="${proj.id}" data-proj-type="${proj.type || 'flexible'}">
                         <td style="padding:12px 10px;">
                           <div style="display:flex; flex-direction:column; min-width:0;">
                             <span style="font-weight:700; font-size:14px;">${proj.name}</span>
@@ -372,10 +403,13 @@ export function renderProjects(container, state) {
                         </td>
                         <td style="padding:12px 10px; text-align:right;">
                           <div style="display:flex; justify-content:flex-end; gap:6px;">
-                            <button class="btn btn-secondary btn-sm toggle-proj-details-btn" data-id="${proj.id}" style="padding:4px; width:28px; height:28px; justify-content:center;">
+                            <button class="btn btn-secondary btn-sm toggle-proj-details-btn" data-id="${proj.id}" style="padding:4px; width:28px; height:28px; justify-content:center;" title="View Tasks">
                               ${icons.chevronDown}
                             </button>
-                            <button class="btn btn-danger btn-sm delete-proj-btn" data-id="${proj.id}" style="padding:4px; width:28px; height:28px; justify-content:center;">
+                            <button class="btn btn-secondary btn-sm edit-proj-btn" data-id="${proj.id}" style="padding:4px; width:28px; height:28px; justify-content:center;" title="Edit Project">
+                              ${icons.edit}
+                            </button>
+                            <button class="btn btn-danger btn-sm delete-proj-btn" data-id="${proj.id}" style="padding:4px; width:28px; height:28px; justify-content:center;" title="Delete Project">
                               ${icons.trash}
                             </button>
                           </div>
@@ -401,7 +435,7 @@ export function renderProjects(container, state) {
               ` : processedProjects.map(proj => {
                 const priorityClass = proj.priority === 'critical' ? 'badge-danger' : proj.priority === 'high' ? 'badge-warning' : 'badge-info';
                 return `
-                  <div class="project-mobile-card" style="background:var(--bg-secondary); border:1px solid var(--border-color); border-radius:var(--radius-md); padding:16px; display:flex; flex-direction:column; gap:12px;" data-proj-row-id="${proj.id}">
+                  <div class="project-mobile-card" style="background:var(--bg-secondary); border:1px solid var(--border-color); border-radius:var(--radius-md); padding:16px; display:flex; flex-direction:column; gap:12px;" data-proj-row-id="${proj.id}" data-proj-type="${proj.type || 'flexible'}">
                     <div style="display:flex; justify-content:space-between; align-items:flex-start; gap:8px;">
                       <div style="min-width:0; flex:1;">
                         <span style="font-weight:800; font-size:15px; color:var(--text-primary); display:block; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${proj.name}</span>
@@ -439,7 +473,10 @@ export function renderProjects(container, state) {
                         Tasks
                         <span class="chevron-indicator" style="display:inline-block; transition:transform 0.2s;">▼</span>
                       </button>
-                      <button class="btn btn-danger btn-sm delete-proj-btn" data-id="${proj.id}" style="padding:6px; width:28px; height:28px; justify-content:center; display:flex; align-items:center;">
+                      <button class="btn btn-secondary btn-sm edit-proj-btn" data-id="${proj.id}" style="padding:6px; width:28px; height:28px; justify-content:center; display:flex; align-items:center;" title="Edit Project">
+                        ${icons.edit}
+                      </button>
+                      <button class="btn btn-danger btn-sm delete-proj-btn" data-id="${proj.id}" style="padding:6px; width:28px; height:28px; justify-content:center; display:flex; align-items:center;" title="Delete Project">
                         ${icons.trash}
                       </button>
                     </div>
@@ -628,6 +665,69 @@ function bindProjectsEvents(container, state, processedProjects) {
     });
   });
 
+  // Edit Subtask Name & Estimate
+  container.querySelectorAll('.edit-subtask-btn').forEach(btn => {
+    btn.addEventListener('click', async (e) => {
+      e.stopPropagation();
+      const projId = Number(btn.getAttribute('data-proj-id'));
+      const idx = parseInt(btn.getAttribute('data-idx'));
+      const project = state.projects.find(p => p.id === projId);
+      if (project && project.subtasks && project.subtasks[idx]) {
+        const current = project.subtasks[idx];
+        const newName = prompt("Edit task name:", current.name);
+        if (newName === null) return;
+        const trimmed = newName.trim();
+        if (!trimmed) {
+          alert("Task name cannot be empty!");
+          return;
+        }
+        const newEstStr = prompt("Estimated minutes:", current.estimatedMinutes || 30);
+        const newEst = parseInt(newEstStr) || current.estimatedMinutes || 30;
+        project.subtasks[idx].name = trimmed;
+        project.subtasks[idx].estimatedMinutes = newEst;
+        project.lastWorkedOn = Date.now();
+        await state.updateProject(projId, { subtasks: project.subtasks, lastWorkedOn: project.lastWorkedOn });
+        showToast("Task updated");
+        renderProjects(container, state);
+      }
+    });
+  });
+
+  // Delete Subtask
+  container.querySelectorAll('.delete-subtask-btn').forEach(btn => {
+    btn.addEventListener('click', async (e) => {
+      e.stopPropagation();
+      const projId = Number(btn.getAttribute('data-proj-id'));
+      const idx = parseInt(btn.getAttribute('data-idx'));
+      const project = state.projects.find(p => p.id === projId);
+      if (project && project.subtasks && project.subtasks[idx]) {
+        if (confirm(`Delete task "${project.subtasks[idx].name}"?`)) {
+          project.subtasks.splice(idx, 1);
+          project.lastWorkedOn = Date.now();
+          await state.updateProject(projId, { subtasks: project.subtasks, lastWorkedOn: project.lastWorkedOn });
+          showToast("Task deleted");
+          renderProjects(container, state);
+        }
+      }
+    });
+  });
+
+  // Clear All Tasks from Project
+  container.querySelectorAll('.clear-proj-tasks-btn').forEach(btn => {
+    btn.addEventListener('click', async (e) => {
+      e.stopPropagation();
+      const projId = Number(btn.getAttribute('data-proj-id'));
+      const project = state.projects.find(p => p.id === projId);
+      if (project) {
+        if (confirm(`Remove all tasks from "${project.name}"?`)) {
+          await state.clearProjectTasks(projId);
+          showToast(`All tasks removed from "${project.name}"`);
+          renderProjects(container, state);
+        }
+      }
+    });
+  });
+
   // F. Add Subtask to Project (Properly scoped for both mobile cards and desktop table)
   container.querySelectorAll('.add-subtask-btn').forEach(btn => {
     const parentContainer = btn.closest('.mobile-project-card, .project-accordion-row') || container;
@@ -750,16 +850,61 @@ function bindProjectsEvents(container, state, processedProjects) {
     });
   });
 
-  // H. Delete Project button
+  // H. Edit Project button
+  container.querySelectorAll('.edit-proj-btn').forEach(btn => {
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const projId = Number(btn.getAttribute('data-id'));
+      showEditProjectModal(projId, state, container);
+    });
+  });
+
+  // H2. Delete Project button
   container.querySelectorAll('.delete-proj-btn').forEach(btn => {
-    btn.addEventListener('click', async () => {
+    btn.addEventListener('click', async (e) => {
+      e.stopPropagation();
       const id = btn.getAttribute('data-id');
-      if (confirm("Are you sure you want to delete this project?")) {
+      const project = state.projects.find(p => p.id === Number(id));
+      const projName = project ? `"${project.name}"` : 'this project';
+      if (confirm(`Are you sure you want to permanently delete ${projName}? This will not return.`)) {
         await state.deleteProject(id);
+        showToast("Project deleted successfully");
         renderProjects(container, state);
       }
     });
   });
+
+  // H3. Category Filter & Clear Tasks in Category
+  const catFilterSelect = container.querySelector('#proj-category-filter-select');
+  if (catFilterSelect) {
+    catFilterSelect.addEventListener('change', () => {
+      const selected = catFilterSelect.value;
+      const rows = container.querySelectorAll('tr[data-proj-row-id]');
+      const cards = container.querySelectorAll('.project-mobile-card[data-proj-row-id]');
+      
+      rows.forEach(r => {
+        const type = r.getAttribute('data-proj-type') || 'flexible';
+        r.style.display = (selected === 'all' || type === selected) ? '' : 'none';
+      });
+      cards.forEach(c => {
+        const type = c.getAttribute('data-proj-type') || 'flexible';
+        c.style.display = (selected === 'all' || type === selected) ? 'flex' : 'none';
+      });
+    });
+  }
+
+  const clearCatTasksBtn = container.querySelector('#clear-cat-tasks-btn');
+  if (clearCatTasksBtn) {
+    clearCatTasksBtn.addEventListener('click', async () => {
+      const selected = catFilterSelect ? catFilterSelect.value : 'all';
+      const label = selected === 'all' ? 'All Categories' : selected;
+      if (confirm(`Are you sure you want to remove all tasks from projects in ${label}? This cannot be undone.`)) {
+        await state.clearCategoryTasks(selected);
+        showToast(`Cleared all tasks in ${label}`);
+        renderProjects(container, state);
+      }
+    });
+  }
 
   // Toggle daily allocation fields in New Project form
   const isDailyAllocCheck = container.querySelector('#new-proj-is-daily-alloc');
@@ -1073,4 +1218,163 @@ async function executeJSONActions(text, state, container) {
     // Re-render
     renderProjects(container, state);
   }
+}
+
+export function showEditProjectModal(projId, state, container) {
+  const project = state.projects.find(p => p.id === Number(projId));
+  if (!project) return;
+
+  const existingModal = document.getElementById('edit-project-modal-backdrop');
+  if (existingModal) existingModal.remove();
+
+  const backdrop = document.createElement('div');
+  backdrop.id = 'edit-project-modal-backdrop';
+  backdrop.style.cssText = `
+    position: fixed;
+    top: 0; left: 0; right: 0; bottom: 0;
+    background: rgba(0, 0, 0, 0.75);
+    backdrop-filter: blur(4px);
+    z-index: 9999;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 16px;
+  `;
+
+  const customTypes = state.customSections || [];
+
+  backdrop.innerHTML = `
+    <div style="background: var(--bg-secondary); border: 1px solid var(--border-color); border-radius: var(--radius-md); width: 100%; max-width: 520px; max-height: 90vh; overflow-y: auto; box-shadow: var(--shadow-lg); padding: 20px; display: flex; flex-direction: column; gap: 16px;">
+      <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid var(--border-color); padding-bottom: 12px;">
+        <h3 style="font-size: 16px; font-weight: 800; color: var(--text-primary); margin: 0;">✏️ Edit Project</h3>
+        <button id="close-edit-proj-modal" style="background: none; border: none; font-size: 22px; color: var(--text-muted); cursor: pointer; line-height: 1;">&times;</button>
+      </div>
+
+      <div style="display: flex; flex-direction: column; gap: 12px;">
+        <div>
+          <label style="font-size: 11px; font-weight: 700; color: var(--text-secondary); text-transform: uppercase; display: block; margin-bottom: 4px;">Project Name</label>
+          <input type="text" id="modal-edit-proj-name" class="premium-input" value="${project.name || ''}" style="width: 100%; height: 32px; font-size: 13px;">
+        </div>
+
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
+          <div>
+            <label style="font-size: 11px; font-weight: 700; color: var(--text-secondary); text-transform: uppercase; display: block; margin-bottom: 4px;">Category / Area</label>
+            <select id="modal-edit-proj-type" class="premium-select" style="width: 100%; height: 32px; font-size: 12px;">
+              <option value="study" ${project.type === 'study' ? 'selected' : ''}>Study</option>
+              <option value="etsy_seo" ${project.type === 'etsy_seo' ? 'selected' : ''}>Etsy + SEO</option>
+              <option value="quran" ${project.type === 'quran' ? 'selected' : ''}>Quran Hifz</option>
+              <option value="flexible" ${(!project.type || project.type === 'flexible') ? 'selected' : ''}>General / Flexible</option>
+              ${customTypes.filter(s => s.type !== 'quran').map(s => `
+                <option value="${s.type}" ${project.type === s.type ? 'selected' : ''}>${s.label}</option>
+              `).join('')}
+            </select>
+          </div>
+
+          <div>
+            <label style="font-size: 11px; font-weight: 700; color: var(--text-secondary); text-transform: uppercase; display: block; margin-bottom: 4px;">Priority</label>
+            <select id="modal-edit-proj-priority" class="premium-select" style="width: 100%; height: 32px; font-size: 12px;">
+              <option value="low" ${project.priority === 'low' ? 'selected' : ''}>Low</option>
+              <option value="medium" ${(!project.priority || project.priority === 'medium') ? 'selected' : ''}>Medium</option>
+              <option value="high" ${project.priority === 'high' ? 'selected' : ''}>High</option>
+              <option value="critical" ${project.priority === 'critical' ? 'selected' : ''}>Critical</option>
+            </select>
+          </div>
+        </div>
+
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
+          <div>
+            <label style="font-size: 11px; font-weight: 700; color: var(--text-secondary); text-transform: uppercase; display: block; margin-bottom: 4px;">Status</label>
+            <select id="modal-edit-proj-status" class="premium-select" style="width: 100%; height: 32px; font-size: 12px;">
+              <option value="Not started" ${project.status === 'Not started' ? 'selected' : ''}>Not started</option>
+              <option value="In progress" ${project.status === 'In progress' ? 'selected' : ''}>In progress</option>
+              <option value="Paused" ${project.status === 'Paused' ? 'selected' : ''}>Paused</option>
+              <option value="Completed" ${project.status === 'Completed' ? 'selected' : ''}>Completed</option>
+            </select>
+          </div>
+
+          <div>
+            <label style="font-size: 11px; font-weight: 700; color: var(--text-secondary); text-transform: uppercase; display: block; margin-bottom: 4px;">Target Deadline</label>
+            <input type="date" id="modal-edit-proj-deadline" class="premium-input" value="${project.deadline || ''}" style="width: 100%; height: 32px; font-size: 12px;">
+          </div>
+        </div>
+
+        <div>
+          <label style="font-size: 11px; font-weight: 700; color: var(--text-secondary); text-transform: uppercase; display: block; margin-bottom: 4px;">Strategic Goal</label>
+          <input type="text" id="modal-edit-proj-goal" class="premium-input" value="${project.goal || ''}" placeholder="Big picture milestone..." style="width: 100%; height: 32px; font-size: 12px;">
+        </div>
+
+        <div>
+          <label style="font-size: 11px; font-weight: 700; color: var(--text-secondary); text-transform: uppercase; display: block; margin-bottom: 4px;">Next Immediate Milestone</label>
+          <input type="text" id="modal-edit-proj-nextgoal" class="premium-input" value="${project.nextGoal || ''}" placeholder="Next stepping stone..." style="width: 100%; height: 32px; font-size: 12px;">
+        </div>
+
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
+          <div>
+            <label style="font-size: 11px; font-weight: 700; color: var(--text-secondary); text-transform: uppercase; display: block; margin-bottom: 4px;">Available Hours/Day</label>
+            <input type="number" id="modal-edit-proj-avail" class="premium-input" value="${project.availableHoursPerDay || 0}" style="width: 100%; height: 32px; font-size: 12px;">
+          </div>
+          <div>
+            <label style="font-size: 11px; font-weight: 700; color: var(--text-secondary); text-transform: uppercase; display: block; margin-bottom: 4px;">Estimated Remaining Hours</label>
+            <input type="number" id="modal-edit-proj-hours" class="premium-input" value="${project.estimatedHours || 0}" style="width: 100%; height: 32px; font-size: 12px;">
+          </div>
+        </div>
+      </div>
+
+      <div style="display: flex; justify-content: space-between; align-items: center; border-top: 1px solid var(--border-color); padding-top: 14px; margin-top: 4px;">
+        <button class="btn btn-danger btn-sm" id="modal-delete-proj-btn" style="font-size: 11px;">
+          🗑 Delete Project
+        </button>
+        <div style="display: flex; gap: 8px;">
+          <button class="btn btn-secondary btn-sm" id="modal-cancel-edit-proj">Cancel</button>
+          <button class="btn btn-primary btn-sm" id="modal-save-edit-proj">Save Changes</button>
+        </div>
+      </div>
+    </div>
+  `;
+
+  document.body.appendChild(backdrop);
+
+  const closeModal = () => backdrop.remove();
+  backdrop.querySelector('#close-edit-proj-modal').addEventListener('click', closeModal);
+  backdrop.querySelector('#modal-cancel-edit-proj').addEventListener('click', closeModal);
+  backdrop.addEventListener('click', (e) => {
+    if (e.target === backdrop) closeModal();
+  });
+
+  // Delete Project from within modal
+  backdrop.querySelector('#modal-delete-proj-btn').addEventListener('click', async () => {
+    if (confirm(`Are you sure you want to permanently delete "${project.name}"? This will not return.`)) {
+      closeModal();
+      await state.deleteProject(projId);
+      showToast("Project deleted successfully");
+      renderProjects(container, state);
+    }
+  });
+
+  // Save Project from within modal
+  backdrop.querySelector('#modal-save-edit-proj').addEventListener('click', async () => {
+    const name = backdrop.querySelector('#modal-edit-proj-name').value.trim();
+    if (!name) {
+      alert("Project name cannot be empty!");
+      return;
+    }
+
+    const updates = {
+      name,
+      type: backdrop.querySelector('#modal-edit-proj-type').value,
+      priority: backdrop.querySelector('#modal-edit-proj-priority').value,
+      status: backdrop.querySelector('#modal-edit-proj-status').value,
+      deadline: backdrop.querySelector('#modal-edit-proj-deadline').value,
+      goal: backdrop.querySelector('#modal-edit-proj-goal').value.trim(),
+      nextGoal: backdrop.querySelector('#modal-edit-proj-nextgoal').value.trim(),
+      availableHoursPerDay: Number(backdrop.querySelector('#modal-edit-proj-avail').value) || 0,
+      estimatedHours: Number(backdrop.querySelector('#modal-edit-proj-hours').value) || 0,
+      lastWorkedOn: Date.now()
+    };
+
+    closeModal();
+    await state.updateProject(projId, updates);
+    showToast("Project updated successfully");
+    renderProjects(container, state);
+  });
 }
