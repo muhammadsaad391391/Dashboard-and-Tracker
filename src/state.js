@@ -207,9 +207,10 @@ class AppState {
       this.currentView = viewSetting ? viewSetting.value : 'dashboard';
 
       if (window.setAetherLoaderText) window.setAetherLoaderText('Loading date & week...');
-      // Load active date setting
-      const activeDateSetting = await db.settings.get('active_date');
-      this.activeDate = activeDateSetting ? activeDateSetting.value : this.getTodayDateStr();
+      // Always start on today's current date and current week when app opens
+      this.activeDate = this.getTodayDateStr();
+      this.expandedDayDate = this.activeDate;
+      await db.settings.put({ key: 'active_date', value: this.activeDate });
 
       if (window.setAetherLoaderText) window.setAetherLoaderText('Fetching collections from IndexedDB...');
       await this.fetchData();

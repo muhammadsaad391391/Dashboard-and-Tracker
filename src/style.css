@@ -2060,8 +2060,71 @@ html.light .theme-switch-thumb {
     animation: slideUpMobile 0.25s cubic-bezier(0.16, 1, 0.3, 1) !important;
   }
 
+  .spreadsheet-th.sticky-col,
+  .spreadsheet-td.sticky-col {
+    width: 76px !important;
+    min-width: 76px !important;
+    max-width: 76px !important;
+    padding: 6px 4px !important;
+    font-size: 11px !important;
+    text-align: center !important;
+  }
+
+  .spreadsheet-td.cell-task {
+    min-width: 125px !important;
+    padding: 6px 8px !important;
+  }
+
   @keyframes slideUpMobile {
     from { transform: translateY(100%); }
     to { transform: translateY(0); }
   }
 }
+
+/* Day Selector Strip in Planner */
+.planner-day-pills-container {
+  display: flex;
+  gap: 8px;
+  overflow-x: auto;
+  padding: 4px 2px 12px 2px;
+  margin-bottom: 16px;
+  -webkit-overflow-scrolling: touch;
+}
+
+.planner-day-pills-container::-webkit-scrollbar {
+  height: 4px;
+}
+
+.planner-day-pill {
+  flex: 1;
+  min-width: 65px;
+  padding: 8px 4px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border-color);
+  background-color: var(--bg-secondary);
+  color: var(--text-primary);
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 3px;
+  transition: all 0.2s ease;
+  user-select: none;
+}
+
+.planner-day-pill:hover {
+  border-color: var(--border-color-hover);
+  background-color: var(--bg-tertiary);
+}
+
+.planner-day-pill.active {
+  background: var(--accent-gradient) !important;
+  border-color: var(--accent) !important;
+  color: #ffffff !important;
+  box-shadow: 0 4px 14px rgba(99, 102, 241, 0.3) !important;
+}
+
+.planner-day-pill.active .planner-day-subtext {
+  color: rgba(255, 255, 255, 0.9) !important;
+}
+

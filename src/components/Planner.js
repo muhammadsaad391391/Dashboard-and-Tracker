@@ -10,7 +10,7 @@ const TIME_SLOTS = [
   '06:30 PM', '07:30 PM', '08:30 PM', '09:30 PM', '10:30 PM'
 ];
 
-let activePlannerSubView = 'grid'; // default view sub-tab ('grid' or 'list')
+let activePlannerSubView = window.innerWidth <= 768 ? 'day' : 'grid'; // 'day', 'grid', or 'list'
 
 export function renderPlanner(container, state) {
   // If no day expanded yet, default to the active date
@@ -39,15 +39,18 @@ export function renderPlanner(container, state) {
   const year = weekDays[0] ? new Date(weekDays[0].date).getFullYear() : '';
   const weekRangeText = `${startLabel} – ${endLabel}, ${year}`;
 
-  // 1. Render outer layout with sub-tabs (Spreadsheet vs Detailed List)
+  // 1. Render outer layout with sub-tabs (Day View vs Week Grid vs Detailed List)
   container.innerHTML = `
     <div class="section-header">
       <div class="section-title">
         <span>Daily Schedule Planner</span>
       </div>
       <div class="view-tabs">
+        <button class="tab-btn ${activePlannerSubView === 'day' ? 'active' : ''}" id="tab-subview-day">
+          <span>Day Schedule</span>
+        </button>
         <button class="tab-btn ${activePlannerSubView === 'grid' ? 'active' : ''}" id="tab-subview-grid">
-          <span>Grid Planner</span>
+          <span>Week Grid</span>
         </button>
         <button class="tab-btn ${activePlannerSubView === 'list' ? 'active' : ''}" id="tab-subview-list">
           <span>Detailed Cards</span>
@@ -57,13 +60,13 @@ export function renderPlanner(container, state) {
 
     <!-- Quick navigation bar for weeks -->
     <div class="card" style="padding: 12px; margin-bottom: 20px; display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap;">
-      <div style="display: flex; align-items: center; gap: 12px; flex-wrap: wrap;">
+      <div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
         <button class="btn btn-secondary btn-sm" id="planner-prev-week-btn">◀ Prev Week</button>
         <span style="font-size: 13px; font-weight: 700; color: var(--text-primary); font-family: var(--font-header);" id="planner-week-range">${weekRangeText}</span>
         <button class="btn btn-secondary btn-sm" id="planner-next-week-btn">Next Week ▶</button>
-        <button class="btn btn-secondary btn-sm" id="planner-today-btn" style="margin-left: 6px;">Today</button>
+        <button class="btn btn-secondary btn-sm" id="planner-today-btn" style="margin-left: 4px;">Current Week / Today</button>
       </div>
-      <div style="display: flex; gap: 6px;" id="grid-scroll-controls">
+      <div style="display: ${activePlannerSubView === 'grid' ? 'flex' : 'none'}; gap: 6px;" id="grid-scroll-controls">
         <button class="btn btn-secondary btn-sm scroll-grid-btn" data-dir="left">◀ Scroll Left</button>
         <button class="btn btn-secondary btn-sm scroll-grid-btn" data-dir="right">Scroll Right ▶</button>
       </div>
@@ -208,14 +211,36 @@ export function renderPlanner(container, state) {
   });
 
   // Register outer navigation click listeners
+  const updateTabActiveState = () => {
+    container.querySelectorAll('.view-tabs .tab-btn').forEach(btn => btn.classList.remove('active'));
+    const activeTab = container.querySelector(`#tab-subview-${activePlannerSubView}`);
+    if (activeTab) activeTab.classList.add('active');
+
+    const scrollControls = container.querySelector('#grid-scroll-controls');
+    if (scrollControls) {
+      scrollControls.style.display = activePlannerSubView === 'grid' ? 'flex' : 'none';
+    }
+  };
+
+  const dayTabBtn = container.querySelector('#tab-subview-day');
+  if (dayTabBtn) {
+    dayTabBtn.addEventListener('click', () => {
+      activePlannerSubView = 'day';
+      updateTabActiveState();
+      renderSubView(state, container);
+    });
+  }
+
   container.querySelector('#tab-subview-grid').addEventListener('click', () => {
     activePlannerSubView = 'grid';
-    renderSubView(state);
+    updateTabActiveState();
+    renderSubView(state, container);
   });
 
   container.querySelector('#tab-subview-list').addEventListener('click', () => {
     activePlannerSubView = 'list';
-    renderSubView(state);
+    updateTabActiveState();
+    renderSubView(state, container);
   });
 
   // Week Navigation Listeners
@@ -225,7 +250,10 @@ export function renderPlanner(container, state) {
     const y = current.getFullYear();
     const m = String(current.getMonth() + 1).padStart(2, '0');
     const d = String(current.getDate()).padStart(2, '0');
-    await state.setActiveDate(`${y}-${m}-${d}`);
+    const newDate = `${y}-${m}-${d}`;
+    await state.setActiveDate(newDate);
+    state.expandedDayDate = newDate;
+    renderPlanner(container, state);
   });
 
   container.querySelector('#planner-next-week-btn').addEventListener('click', async () => {
@@ -234,15 +262,21 @@ export function renderPlanner(container, state) {
     const y = current.getFullYear();
     const m = String(current.getMonth() + 1).padStart(2, '0');
     const d = String(current.getDate()).padStart(2, '0');
-    await state.setActiveDate(`${y}-${m}-${d}`);
+    const newDate = `${y}-${m}-${d}`;
+    await state.setActiveDate(newDate);
+    state.expandedDayDate = newDate;
+    renderPlanner(container, state);
   });
 
   container.querySelector('#planner-today-btn').addEventListener('click', async () => {
-    await state.setActiveDate(state.getTodayDateStr());
+    const todayStr = state.getTodayDateStr();
+    await state.setActiveDate(todayStr);
+    state.expandedDayDate = todayStr;
+    renderPlanner(container, state);
   });
 
   // Render the current subview
-  renderSubView(state);
+  renderSubView(state, container);
 
   // Grid Scroll Buttons click handlers
   container.querySelectorAll('.scroll-grid-btn').forEach(btn => {
@@ -257,15 +291,434 @@ export function renderPlanner(container, state) {
   });
 }
 
-function renderSubView(state) {
+function renderSubView(state, mainContainer) {
   const contentArea = document.getElementById('planner-content-area');
   if (!contentArea) return;
 
-  if (activePlannerSubView === 'grid') {
+  if (activePlannerSubView === 'day') {
+    renderDaySubView(contentArea, state, mainContainer);
+  } else if (activePlannerSubView === 'grid') {
     renderGridSubView(contentArea, state);
   } else {
     renderListSubView(contentArea, state);
   }
+}
+
+// -------------------------------------------------------------
+// DAY SCHEDULE VIEW (100% RESPONSIVE & MOBILE-FIRST)
+// -------------------------------------------------------------
+function renderDaySubView(container, state, mainContainer) {
+  const weekDays = state.getDaysForActiveWeek();
+  const activeDate = state.getActiveDate();
+  const todayDateStr = state.getTodayDateStr();
+
+  // Find active day or fallback to the first day of current week
+  let activeDay = state.days.find(d => d.date === activeDate);
+  if (!activeDay && weekDays.length > 0) {
+    activeDay = weekDays[0];
+  }
+  if (!activeDay) return;
+
+  // Calculate day completion stats
+  const totalTasks = activeDay.schedule.length;
+  const completedTasks = activeDay.schedule.filter(t => t.status === 'completed' || t.status === 'delayed').length;
+  const progressPercent = totalTasks > 0 ? Math.round((completedTasks / totalTasks) * 100) : 0;
+
+  const pillsHtml = weekDays.map(day => {
+    const isSelected = day.date === activeDay.date;
+    const isToday = day.date === todayDateStr;
+    const count = day.schedule.length;
+    const doneCount = day.schedule.filter(t => t.status === 'completed' || t.status === 'delayed').length;
+    const allDone = count > 0 && doneCount === count;
+
+    return `
+      <button class="planner-day-pill ${isSelected ? 'active' : ''}" data-date="${day.date}" title="${day.label}">
+        <span class="planner-day-subtext" style="font-size: 11px; font-weight: 700; text-transform: uppercase; opacity: ${isSelected ? '1' : '0.75'};">${day.weekday.substring(0, 3)}</span>
+        <span style="font-size: 16px; font-weight: 800;">${day.date.split('-')[2]}</span>
+        ${isToday ? `<span style="font-size: 9px; font-weight: 800; background: ${isSelected ? 'rgba(255,255,255,0.25)' : 'var(--accent-glow)'}; color: ${isSelected ? '#ffffff' : 'var(--accent)'}; padding: 1px 5px; border-radius: 4px;">TODAY</span>` : ''}
+        <span class="planner-day-subtext" style="font-size: 10px; opacity: ${isSelected ? '0.9' : '0.65'}; font-family: var(--font-mono); margin-top: 2px;">
+          ${count === 0 ? 'Free' : `${doneCount}/${count}${allDone ? ' ✨' : ''}`}
+        </span>
+      </button>
+    `;
+  }).join('');
+
+  container.innerHTML = `
+    <!-- Weekday Selector Pill Strip -->
+    <div class="planner-day-pills-container">
+      ${pillsHtml}
+    </div>
+
+    <!-- Active Day Schedule Card -->
+    <div class="card" style="padding: 16px; margin-bottom: 20px;">
+      <!-- Header with date, stats and actions -->
+      <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px; margin-bottom: 16px; border-bottom: 1px solid var(--border-color); padding-bottom: 12px;">
+        <div style="display: flex; flex-direction: column; gap: 4px;">
+          <div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
+            <h3 style="margin: 0; font-size: 18px; font-weight: 800; color: var(--text-primary); font-family: var(--font-header);">
+              ${activeDay.weekday}, ${activeDay.label}
+            </h3>
+            ${activeDay.date === todayDateStr ? `
+              <span class="badge" style="background: var(--accent-glow); color: var(--accent); font-weight: 800; font-size: 11px; padding: 2px 8px; border-radius: 12px;">Today</span>
+            ` : ''}
+          </div>
+          <div style="display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--text-muted); font-family: var(--font-mono);">
+            <span>Tasks: <strong>${completedTasks}/${totalTasks}</strong></span>
+            <span>•</span>
+            <span>Completion: <strong>${progressPercent}%</strong></span>
+          </div>
+          <!-- Progress bar -->
+          <div style="width: 180px; max-width: 100%; height: 6px; background-color: var(--bg-tertiary); border-radius: 3px; overflow: hidden; margin-top: 4px;">
+            <div style="width: ${progressPercent}%; height: 100%; background: var(--accent-gradient); transition: width 0.3s ease;"></div>
+          </div>
+        </div>
+
+        <div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
+          <button class="btn btn-secondary btn-sm" id="dayview-replicate-btn" style="display:flex; align-items:center; gap:4px; font-size:11px; padding:4px 10px;" title="Clone yesterday's schedule to this day">
+            📋 Replicate Yesterday
+          </button>
+          <button class="btn btn-primary btn-sm" id="dayview-add-task-btn" style="display:flex; align-items:center; gap:4px; font-size:11px; padding:4px 10px;">
+            ${icons.plus} Add Task
+          </button>
+        </div>
+      </div>
+
+      <!-- Full-Width Schedule List -->
+      <div class="task-list" style="display: flex; flex-direction: column; gap: 8px;">
+        ${state.timeIntervals.map(slot => {
+          const task = activeDay.schedule.find(t => t.plannedTime === slot);
+
+          if (task) {
+            let statusClass = '';
+            if (task.status === 'completed') statusClass = 'done';
+            else if (task.status === 'missed') statusClass = 'missed-row';
+            else if (task.status === 'delayed') statusClass = 'delayed-row';
+
+            let typeBadge = '';
+            if (task.type === 'study') {
+              typeBadge = `<span style="font-size: 10px; font-weight:600; padding: 2px 6px; border-radius: 4px; background-color: rgba(59, 130, 246, 0.1); color: #3b82f6; border: 1px solid rgba(59, 130, 246, 0.2); white-space: nowrap;">Study</span>`;
+            } else if (task.type === 'etsy_seo') {
+              typeBadge = `<span style="font-size: 10px; font-weight:600; padding: 2px 6px; border-radius: 4px; background-color: rgba(249, 115, 22, 0.1); color: #f97316; border: 1px solid rgba(249, 115, 22, 0.2); white-space: nowrap;">Etsy + SEO</span>`;
+            } else if (task.type === 'quran') {
+              typeBadge = `<span style="font-size: 10px; font-weight:600; padding: 2px 6px; border-radius: 4px; background-color: rgba(16, 185, 129, 0.1); color: #10b981; border: 1px solid rgba(16, 185, 129, 0.2); white-space: nowrap;">Quran</span>`;
+            } else {
+              typeBadge = `<span style="font-size: 10px; font-weight:600; padding: 2px 6px; border-radius: 4px; background-color: rgba(139, 92, 246, 0.1); color: #8b5cf6; border: 1px solid rgba(139, 92, 246, 0.2); white-space: nowrap;">General</span>`;
+            }
+
+            return `
+              <div class="task-row ${statusClass}" data-task-id="${task.id}" style="border-radius: var(--radius-sm);">
+                <div class="task-info-side">
+                  <span class="task-time-lbl" style="background-color: var(--bg-secondary); cursor: pointer;" title="Time Slot">${slot}</span>
+                  <span class="task-name-lbl dayview-task-name" data-task-id="${task.id}" style="cursor: pointer; font-weight: 600;" title="Click to edit task">${task.name}</span>
+                  ${typeBadge}
+                </div>
+
+                <div class="task-actions-side">
+                  <select class="premium-select ${task.status} dayview-status-select" data-task-id="${task.id}">
+                    <option value="pending" ${task.status === 'pending' ? 'selected' : ''}>Pending</option>
+                    <option value="completed" ${task.status === 'completed' ? 'selected' : ''}>✅ Completed</option>
+                    <option value="missed" ${task.status === 'missed' ? 'selected' : ''}>❌ Missed</option>
+                    <option value="delayed" ${task.status === 'delayed' ? 'selected' : ''}>⚠ Delayed</option>
+                  </select>
+                  <button class="btn btn-secondary btn-sm dayview-edit-task-btn" data-task-id="${task.id}" style="padding: 4px 8px; height: 28px; display: flex; align-items: center; justify-content: center;" title="Edit Task">
+                    ✏️
+                  </button>
+                  <button class="btn btn-danger btn-sm dayview-delete-task-btn" data-task-id="${task.id}" style="padding: 4px; height: 28px; width: 28px; display: flex; justify-content: center; align-items: center;" title="Delete Task">
+                    ${icons.trash}
+                  </button>
+                </div>
+              </div>
+            `;
+          } else {
+            return `
+              <div class="task-row empty-slot dayview-empty-row" data-time="${slot}" style="opacity: 0.75; background-color: transparent; border-style: dashed; padding: 10px 16px; cursor: pointer;">
+                <div class="task-info-side">
+                  <span class="task-time-lbl" style="background-color: var(--bg-tertiary);">${slot}</span>
+                  <span style="color: var(--text-secondary); font-style: italic; font-size: 13px;">Free Slot</span>
+                </div>
+                <div class="task-actions-side">
+                  <button class="btn btn-secondary btn-sm dayview-schedule-slot-btn" data-time="${slot}" style="padding: 2px 8px; font-size: 11px;">
+                    + Schedule
+                  </button>
+                </div>
+              </div>
+            `;
+          }
+        }).join('')}
+      </div>
+    </div>
+  `;
+
+  // Attach Day Pill Click Handlers
+  container.querySelectorAll('.planner-day-pill').forEach(pill => {
+    pill.addEventListener('click', async () => {
+      const date = pill.getAttribute('data-date');
+      await state.setActiveDate(date);
+      state.expandedDayDate = date;
+      renderPlanner(mainContainer, state);
+    });
+  });
+
+  // Replicate Yesterday Button
+  const repBtn = container.querySelector('#dayview-replicate-btn');
+  if (repBtn) {
+    repBtn.addEventListener('click', async () => {
+      const curDateObj = new Date(activeDay.date + 'T00:00:00');
+      curDateObj.setDate(curDateObj.getDate() - 1);
+      const prevY = curDateObj.getFullYear();
+      const prevM = String(curDateObj.getMonth() + 1).padStart(2, '0');
+      const prevD = String(curDateObj.getDate()).padStart(2, '0');
+      const prevDateStr = `${prevY}-${prevM}-${prevD}`;
+
+      const prevDay = state.days.find(d => d.date === prevDateStr);
+      if (!prevDay || !prevDay.schedule || prevDay.schedule.length === 0) {
+        alert(`No scheduled tasks found on the previous day (${prevDateStr}) to replicate.`);
+        return;
+      }
+
+      const taskCount = prevDay.schedule.length;
+      const confirmed = confirm(`Replicate ${taskCount} task${taskCount === 1 ? '' : 's'} from yesterday (${prevDateStr}) into today (${activeDay.date})?\n\nTasks will be copied with status reset to Pending.`);
+      if (!confirmed) return;
+
+      const replicatedTasks = prevDay.schedule.map((task, idx) => ({
+        ...task,
+        id: 't-' + Date.now() + '-' + idx,
+        status: 'pending',
+        missedReason: '',
+        actualTime: ''
+      }));
+
+      const existingOtherSlots = activeDay.schedule.filter(t => !replicatedTasks.some(r => r.plannedTime === t.plannedTime));
+      const mergedSchedule = [...existingOtherSlots, ...replicatedTasks];
+
+      mergedSchedule.sort((a, b) => {
+        const idxA = state.timeIntervals.indexOf(a.plannedTime);
+        const idxB = state.timeIntervals.indexOf(b.plannedTime);
+        return idxA - idxB;
+      });
+
+      activeDay.schedule = mergedSchedule;
+      await state.updateDay(activeDay.date, { schedule: activeDay.schedule });
+
+      confetti({ particleCount: 50, spread: 45 });
+      showToast(`✨ Replicated ${taskCount} task${taskCount === 1 ? '' : 's'} from yesterday!`);
+      renderPlanner(mainContainer, state);
+    });
+  }
+
+  // Add Task Button
+  const addBtn = container.querySelector('#dayview-add-task-btn');
+  if (addBtn) {
+    addBtn.addEventListener('click', (e) => {
+      const freeSlot = state.timeIntervals.find(slot => !activeDay.schedule.some(t => t.plannedTime === slot)) || state.timeIntervals[0];
+      showPlannerCellPopup(e, addBtn, activeDay.date, freeSlot, state, 'general', async (taskName, taskType) => {
+        const newTask = {
+          id: 't-' + Date.now(),
+          name: taskName,
+          plannedTime: freeSlot,
+          status: 'pending',
+          missedReason: '',
+          actualTime: '',
+          type: taskType || 'general'
+        };
+        activeDay.schedule.push(newTask);
+        activeDay.schedule.sort((a, b) => state.timeIntervals.indexOf(a.plannedTime) - state.timeIntervals.indexOf(b.plannedTime));
+        await state.updateDay(activeDay.date, { schedule: activeDay.schedule });
+        showToast('Task added to schedule!');
+        renderPlanner(mainContainer, state);
+      });
+    });
+  }
+
+  // Schedule Free Slot Click
+  container.querySelectorAll('.dayview-schedule-slot-btn, .dayview-empty-row').forEach(el => {
+    el.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const time = el.getAttribute('data-time') || el.closest('.dayview-empty-row')?.getAttribute('data-time');
+      if (!time) return;
+
+      showPlannerCellPopup(e, el, activeDay.date, time, state, 'general', async (taskName, taskType) => {
+        const newTask = {
+          id: 't-' + Date.now(),
+          name: taskName,
+          plannedTime: time,
+          status: 'pending',
+          missedReason: '',
+          actualTime: '',
+          type: taskType || 'general'
+        };
+        activeDay.schedule.push(newTask);
+        activeDay.schedule.sort((a, b) => state.timeIntervals.indexOf(a.plannedTime) - state.timeIntervals.indexOf(b.plannedTime));
+        await state.updateDay(activeDay.date, { schedule: activeDay.schedule });
+        showToast(`Scheduled at ${time}!`);
+        renderPlanner(mainContainer, state);
+      });
+    });
+  });
+
+  // Edit Task Click (Task Name or Edit Button)
+  container.querySelectorAll('.dayview-task-name, .dayview-edit-task-btn').forEach(el => {
+    el.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const taskId = el.getAttribute('data-task-id');
+      const task = activeDay.schedule.find(t => t.id === taskId);
+      if (task) {
+        showTaskEditModal(task, activeDay, state, mainContainer);
+      }
+    });
+  });
+
+  // Delete Task Click
+  container.querySelectorAll('.dayview-delete-task-btn').forEach(btn => {
+    btn.addEventListener('click', async (e) => {
+      e.stopPropagation();
+      const taskId = btn.getAttribute('data-task-id');
+      if (confirm('Delete this task from schedule?')) {
+        activeDay.schedule = activeDay.schedule.filter(t => t.id !== taskId);
+        await state.updateDay(activeDay.date, { schedule: activeDay.schedule });
+        showToast('Task deleted from schedule');
+        renderPlanner(mainContainer, state);
+      }
+    });
+  });
+
+  // Status Change
+  container.querySelectorAll('.dayview-status-select').forEach(select => {
+    select.addEventListener('change', async (e) => {
+      const taskId = select.getAttribute('data-task-id');
+      const newStatus = select.value;
+      const task = activeDay.schedule.find(t => t.id === taskId);
+      if (!task) return;
+
+      task.status = newStatus;
+
+      if (newStatus === 'completed') {
+        task.missedReason = '';
+        task.actualTime = '';
+        confetti({ particleCount: 70, spread: 55, origin: { y: 0.7 } });
+        await state.updateDay(activeDay.date, { schedule: activeDay.schedule });
+        renderDaySubView(container, state, mainContainer);
+      } else if (newStatus === 'missed') {
+        const reason = prompt("Why was this task not completed?", task.missedReason || "");
+        task.missedReason = reason || "";
+        await state.updateDay(activeDay.date, { schedule: activeDay.schedule });
+        renderDaySubView(container, state, mainContainer);
+      } else if (newStatus === 'delayed') {
+        const time = prompt("When was this task actually completed?", task.actualTime || "e.g. 15:30");
+        task.actualTime = time || "";
+        await state.updateDay(activeDay.date, { schedule: activeDay.schedule });
+        renderDaySubView(container, state, mainContainer);
+      } else {
+        task.missedReason = '';
+        task.actualTime = '';
+        await state.updateDay(activeDay.date, { schedule: activeDay.schedule });
+        renderDaySubView(container, state, mainContainer);
+      }
+    });
+  });
+}
+
+function showTaskEditModal(task, activeDay, state, mainContainer) {
+  const existingModal = document.querySelector('#planner-task-edit-modal');
+  if (existingModal) existingModal.remove();
+  const existingBackdrop = document.querySelector('.modal-backdrop-fade');
+  if (existingBackdrop) existingBackdrop.remove();
+
+  const allTypes = [
+    { type: 'general', label: 'General' },
+    { type: 'study', label: 'Study' },
+    { type: 'etsy_seo', label: 'Etsy + SEO' },
+    { type: 'quran', label: 'Quran Hifz' },
+    ...state.customSections.filter(s => s.type !== 'quran').map(s => ({ type: s.type, label: s.label }))
+  ];
+
+  const backdrop = document.createElement('div');
+  backdrop.className = 'modal-backdrop-fade';
+  backdrop.style.cssText = `
+    position: fixed;
+    top: 0; left: 0; width: 100vw; height: 100vh;
+    background: rgba(0,0,0,0.45); backdrop-filter: blur(2px);
+    z-index: 9999;
+  `;
+
+  const modal = document.createElement('div');
+  modal.id = 'planner-task-edit-modal';
+  modal.className = 'status-popup';
+  modal.innerHTML = `
+    <div style="display:flex; justify-content:space-between; align-items:center; border-bottom:1px solid var(--border-color); padding-bottom:8px; margin-bottom:12px;">
+      <span style="font-size:13px; font-weight:800; color:var(--text-primary); text-transform:uppercase;">Edit Task Details</span>
+      <button id="close-planner-edit" style="background:none; border:none; color:var(--text-muted); font-size:20px; cursor:pointer;">&times;</button>
+    </div>
+    <div style="display:flex; flex-direction:column; gap:12px;">
+      <div>
+        <label style="font-size:11px; font-weight:700; color:var(--text-muted); text-transform:uppercase;">Task Name</label>
+        <input type="text" id="planner-edit-task-name" class="premium-input" value="${task.name}" style="width:100%; height:36px; font-size:14px; margin-top:4px;">
+      </div>
+      <div style="display:flex; gap:10px;">
+        <div style="flex:1;">
+          <label style="font-size:11px; font-weight:700; color:var(--text-muted); text-transform:uppercase;">Time Slot</label>
+          <select id="planner-edit-slot" class="premium-select" style="width:100%; height:36px; font-size:12px; margin-top:4px; font-family:var(--font-mono);">
+            ${state.timeIntervals.map(t => `<option value="${t}" ${task.plannedTime === t ? 'selected' : ''}>${t}</option>`).join('')}
+          </select>
+        </div>
+        <div style="flex:1;">
+          <label style="font-size:11px; font-weight:700; color:var(--text-muted); text-transform:uppercase;">Category</label>
+          <select id="planner-edit-type" class="premium-select" style="width:100%; height:36px; font-size:12px; margin-top:4px;">
+            ${allTypes.map(t => `<option value="${t.type}" ${task.type === t.type ? 'selected' : ''}>${t.label}</option>`).join('')}
+          </select>
+        </div>
+      </div>
+      <div style="display:flex; gap:10px; margin-top:8px;">
+        <button class="btn btn-secondary" id="planner-cancel-edit" style="flex:1; justify-content:center; height:36px;">Cancel</button>
+        <button class="btn btn-primary" id="planner-save-edit" style="flex:1; justify-content:center; height:36px; font-weight:700;">Save Changes</button>
+      </div>
+    </div>
+  `;
+
+  document.body.appendChild(backdrop);
+  document.body.appendChild(modal);
+
+  const closeModal = () => {
+    modal.remove();
+    backdrop.remove();
+  };
+  backdrop.addEventListener('click', closeModal);
+  modal.querySelector('#close-planner-edit').addEventListener('click', closeModal);
+  modal.querySelector('#planner-cancel-edit').addEventListener('click', closeModal);
+
+  const nameInput = modal.querySelector('#planner-edit-task-name');
+  nameInput.focus();
+
+  modal.querySelector('#planner-save-edit').addEventListener('click', async () => {
+    const newName = nameInput.value.trim();
+    const newSlot = modal.querySelector('#planner-edit-slot').value;
+    const newType = modal.querySelector('#planner-edit-type').value;
+
+    if (!newName) {
+      alert("Task name cannot be empty");
+      return;
+    }
+
+    if (newSlot !== task.plannedTime && activeDay.schedule.some(t => t.plannedTime === newSlot && t.id !== task.id)) {
+      if (!confirm(`A task is already scheduled in slot "${newSlot}". Overwrite it?`)) return;
+      activeDay.schedule = activeDay.schedule.filter(t => t.plannedTime !== newSlot || t.id === task.id);
+    }
+
+    task.name = newName;
+    task.plannedTime = newSlot;
+    task.type = newType;
+
+    activeDay.schedule.sort((a, b) => {
+      const idxA = state.timeIntervals.indexOf(a.plannedTime);
+      const idxB = state.timeIntervals.indexOf(b.plannedTime);
+      return idxA - idxB;
+    });
+
+    closeModal();
+    await state.updateDay(activeDay.date, { schedule: activeDay.schedule });
+    showToast('Task updated!');
+    renderPlanner(mainContainer, state);
+  });
 }
 
 // -------------------------------------------------------------
@@ -293,7 +746,12 @@ function renderGridSubView(container, state) {
   let rowsHtml = '';
   state.timeIntervals.forEach((slot, rowIdx) => {
     rowsHtml += `<tr>`;
-    rowsHtml += `<td class="spreadsheet-td sticky-col">${slot}</td>`;
+    let slotDisplay = slot;
+    if (slot.includes(' - ')) {
+      const parts = slot.split(' - ');
+      slotDisplay = `<div style="font-weight:700; line-height:1.2;">${parts[0]}</div><div style="font-size:9px; opacity:0.65; margin-top:2px;">to ${parts[1]}</div>`;
+    }
+    rowsHtml += `<td class="spreadsheet-td sticky-col">${slotDisplay}</td>`;
     
     // For each day, find the task matching this time slot
     weekDays.forEach((day, colIdx) => {
