@@ -2,7 +2,7 @@ import { icons } from '../icons.js';
 import confetti from 'canvas-confetti';
 import { showPlannerCellPopup } from './PlannerCellPopup.js';
 import { showToast } from '../main.js';
-import { showEditProjectModal } from './Projects.js';
+import { showEditProjectModal, showEditTaskModal } from './Projects.js';
 
 export function renderCategoryTracker(container, state, categoryId, categoryLabel, categoryType, categoryIcon) {
   let savedScrollLeft = 0;
@@ -312,33 +312,49 @@ export function renderCategoryTracker(container, state, categoryId, categoryLabe
                   </div>
                 ` : `
                   <div style="display:flex; flex-direction:column; gap:6px;">
-                    ${pendingTasks.map(task => `
-                      <div style="display:flex; align-items:center; justify-content:space-between; background:var(--bg-secondary); padding:8px 10px; border-radius:4px; border:1px solid var(--border-color); gap:8px;">
-                        <div style="display:flex; align-items:center; gap:8px; flex:1; min-width:0;">
-                          <input type="checkbox" class="cat-task-check" data-proj-id="${proj.id}" data-task-id="${task.id}" style="width:16px; height:16px; cursor:pointer;">
-                          <span style="font-size:13px; font-weight:600; color:var(--text-primary); overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${task.name}</span>
-                          <span style="font-size:10px; font-family:var(--font-mono); color:var(--text-muted); background:var(--bg-tertiary); padding:1px 5px; border-radius:3px; margin-left:auto; flex-shrink:0;">~${task.estimatedMinutes || 30}m</span>
+                    ${pendingTasks.map(task => {
+                      const isDoneToday = state.isTaskCompletedToday(task, activeDate);
+                      return `
+                        <div style="display:flex; align-items:center; justify-content:space-between; background:var(--bg-secondary); padding:8px 10px; border-radius:4px; border:1px solid ${isDoneToday ? 'rgba(16, 185, 129, 0.4)' : 'var(--border-color)'}; gap:8px;">
+                          <div style="display:flex; align-items:center; gap:8px; flex:1; min-width:0;">
+                            <input type="checkbox" class="cat-task-check" data-proj-id="${proj.id}" data-task-id="${task.id}" ${isDoneToday ? 'checked' : ''} style="width:16px; height:16px; cursor:pointer;" title="${isDoneToday ? 'Done for today (uncheck to undo)' : 'Mark done for today'}">
+                            <span style="font-size:13px; font-weight:600; color:var(--text-primary); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; ${isDoneToday ? 'text-decoration:line-through; opacity:0.65;' : ''}">${task.name}</span>
+                            ${isDoneToday ? `<span class="badge" style="background:rgba(16,185,129,0.15); color:#10b981; font-size:10px; padding:1px 5px; border-radius:3px; font-weight:700;">Done Today</span>` : ''}
+                            <span style="font-size:10px; font-family:var(--font-mono); color:var(--text-muted); background:var(--bg-tertiary); padding:1px 5px; border-radius:3px; margin-left:auto; flex-shrink:0;">~${task.estimatedMinutes || 30}m</span>
+                          </div>
+                          <div style="display:flex; align-items:center; gap:6px; flex-shrink:0;">
+                            <button class="btn btn-primary btn-sm cat-schedule-task-btn" data-proj-id="${proj.id}" data-task-id="${task.id}" data-task-name="${encodeURIComponent(task.name)}" style="height:26px; padding:0 8px; font-size:11px; font-weight:700;" title="Schedule into today's first available slot">
+                              ⚡ Schedule
+                            </button>
+                            <button class="btn btn-secondary btn-sm cat-edit-task-btn" data-proj-id="${proj.id}" data-task-id="${task.id}" style="height:26px; padding:0 6px; font-size:11px;" title="Edit Task Name & Duration">
+                              ${icons.edit}
+                            </button>
+                            <button class="btn btn-secondary btn-sm cat-complete-forever-btn" data-proj-id="${proj.id}" data-task-id="${task.id}" style="height:26px; padding:0 6px; font-size:10px; color:var(--text-secondary);" title="Complete Forever (Overall milestone done)">
+                              ✓ Forever
+                            </button>
+                            <button class="btn btn-secondary btn-sm cat-delete-task-btn" data-proj-id="${proj.id}" data-task-id="${task.id}" style="height:26px; width:26px; padding:0; justify-content:center; color:var(--text-muted);" title="Delete task">&times;</button>
+                          </div>
                         </div>
-                        <div style="display:flex; align-items:center; gap:6px; flex-shrink:0;">
-                          <button class="btn btn-primary btn-sm cat-schedule-task-btn" data-proj-id="${proj.id}" data-task-id="${task.id}" data-task-name="${encodeURIComponent(task.name)}" style="height:26px; padding:0 8px; font-size:11px; font-weight:700;" title="Schedule into today's first available slot">
-                            ⚡ Schedule
-                          </button>
-                          <button class="btn btn-secondary btn-sm cat-delete-task-btn" data-proj-id="${proj.id}" data-task-id="${task.id}" style="height:26px; width:26px; padding:0; justify-content:center; color:var(--text-muted);" title="Delete task">&times;</button>
-                        </div>
-                      </div>
-                    `).join('')}
+                      `;
+                    }).join('')}
                   </div>
                 `}
 
                 <!-- Completed Tasks Collapsible -->
                 ${completedTasks.length > 0 ? `
                   <details style="margin-top:10px; font-size:12px; color:var(--text-muted);">
-                    <summary style="cursor:pointer; font-weight:600; padding:4px 0;">✓ Show ${completedTasks.length} Completed Task${completedTasks.length > 1 ? 's' : ''}</summary>
+                    <summary style="cursor:pointer; font-weight:600; padding:4px 0;">✓ Show ${completedTasks.length} Completed Forever Task${completedTasks.length > 1 ? 's' : ''}</summary>
                     <div style="display:flex; flex-direction:column; gap:4px; margin-top:6px; padding-left:8px;">
                       ${completedTasks.map(ct => `
-                        <div style="display:flex; align-items:center; gap:6px; font-size:12px; text-decoration:line-through; opacity:0.65;">
-                          <span>✓</span>
-                          <span>${ct.name}</span>
+                        <div style="display:flex; align-items:center; justify-content:space-between; background:var(--bg-secondary); padding:4px 8px; border-radius:4px; border:1px solid var(--border-color); font-size:12px;">
+                          <div style="display:flex; align-items:center; gap:6px; text-decoration:line-through; opacity:0.65;">
+                            <span>✓</span>
+                            <span>${ct.name}</span>
+                            <span style="font-size:10px; font-family:var(--font-mono);">(${ct.estimatedMinutes || 30}m)</span>
+                          </div>
+                          <button class="btn btn-secondary btn-sm cat-restore-forever-btn" data-proj-id="${proj.id}" data-task-id="${ct.id}" style="height:22px; font-size:10px; padding:0 6px;" title="Bring back to active tasks">
+                            Restore
+                          </button>
                         </div>
                       `).join('')}
                     </div>
@@ -634,22 +650,19 @@ export function renderCategoryTracker(container, state, categoryId, categoryLabe
     }
   });
 
-  // 4. Mark Task Complete
+  // 4. Mark Task Complete for Today
   container.querySelectorAll('.cat-task-check').forEach(chk => {
     chk.addEventListener('change', async () => {
       const projId = Number(chk.getAttribute('data-proj-id'));
       const taskId = chk.getAttribute('data-task-id');
-      const project = state.projects.find(p => p.id === projId);
-      if (project && project.subtasks) {
-        const sub = project.subtasks.find(s => s.id === taskId);
-        if (sub) {
-          sub.completed = chk.checked;
-          project.lastWorkedOn = Date.now();
-          await state.updateProject(projId, { subtasks: project.subtasks, lastWorkedOn: project.lastWorkedOn });
-          if (chk.checked) confetti({ particleCount: 30, spread: 25 });
-          renderCategoryTracker(container, state, categoryId, categoryLabel, categoryType, categoryIcon);
-        }
+      await state.toggleTaskDoneToday(projId, taskId);
+      if (chk.checked) {
+        confetti({ particleCount: 30, spread: 25 });
+        showToast("Task completed for today! (Resets tomorrow)");
+      } else {
+        showToast("Task marked pending for today");
       }
+      renderCategoryTracker(container, state, categoryId, categoryLabel, categoryType, categoryIcon);
     });
   });
 
@@ -700,18 +713,55 @@ export function renderCategoryTracker(container, state, categoryId, categoryLabe
     });
   });
 
-  // 6. Delete Task
+  // 6. Edit Task Name & Duration Modal
+  container.querySelectorAll('.cat-edit-task-btn').forEach(btn => {
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const projId = Number(btn.getAttribute('data-proj-id'));
+      const taskId = btn.getAttribute('data-task-id');
+      showEditTaskModal(projId, taskId, state, () => {
+        renderCategoryTracker(container, state, categoryId, categoryLabel, categoryType, categoryIcon);
+      });
+    });
+  });
+
+  // 7. Complete Task Forever
+  container.querySelectorAll('.cat-complete-forever-btn').forEach(btn => {
+    btn.addEventListener('click', async (e) => {
+      e.stopPropagation();
+      const projId = Number(btn.getAttribute('data-proj-id'));
+      const taskId = btn.getAttribute('data-task-id');
+      await state.toggleTaskDoneForever(projId, taskId);
+      confetti({ particleCount: 40, spread: 30 });
+      showToast("Task completed forever! (Moved to completed archive)");
+      renderCategoryTracker(container, state, categoryId, categoryLabel, categoryType, categoryIcon);
+    });
+  });
+
+  // 8. Restore Completed Forever Task
+  container.querySelectorAll('.cat-restore-forever-btn').forEach(btn => {
+    btn.addEventListener('click', async (e) => {
+      e.stopPropagation();
+      const projId = Number(btn.getAttribute('data-proj-id'));
+      const taskId = btn.getAttribute('data-task-id');
+      await state.toggleTaskDoneForever(projId, taskId);
+      showToast("Task restored to active list");
+      renderCategoryTracker(container, state, categoryId, categoryLabel, categoryType, categoryIcon);
+    });
+  });
+
+  // 9. Delete Task
   container.querySelectorAll('.cat-delete-task-btn').forEach(btn => {
     btn.addEventListener('click', async () => {
       const projId = Number(btn.getAttribute('data-proj-id'));
       const taskId = btn.getAttribute('data-task-id');
       const project = state.projects.find(p => p.id === projId);
-      if (project && project.subtasks) {
-        if (confirm("Delete this task?")) {
-          project.subtasks = project.subtasks.filter(s => s.id !== taskId);
-          await state.updateProject(projId, { subtasks: project.subtasks });
-          renderCategoryTracker(container, state, categoryId, categoryLabel, categoryType, categoryIcon);
-        }
+      const task = project && project.subtasks ? project.subtasks.find(s => s.id === taskId) : null;
+      const tName = task ? `"${task.name}"` : 'this task';
+      if (confirm(`Delete task ${tName}?`)) {
+        await state.deleteProjectTask(projId, taskId);
+        showToast("Task deleted");
+        renderCategoryTracker(container, state, categoryId, categoryLabel, categoryType, categoryIcon);
       }
     });
   });

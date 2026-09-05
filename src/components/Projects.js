@@ -23,65 +23,115 @@ export function getDailyAllocationStats(proj, state) {
 }
 
 export function getProjectDetailsContentHTML(proj, state) {
+  const activeDate = state.getActiveDate();
   const allocStats = proj.isDailyAllocation ? getDailyAllocationStats(proj, state) : null;
+  const allSub = proj.subtasks || [];
+  const activeTasks = allSub.filter(s => !s.completed);
+  const completedForeverTasks = allSub.filter(s => s.completed);
+
   return `
     <div style="display:flex; flex-direction:column; gap:16px;">
       
-      <!-- Subtasks Section -->
+      ${proj.isDailyAllocation ? `
+        <!-- Daily Allocation Target Bar -->
+        <div style="background-color:var(--bg-tertiary); padding:14px; border-radius:var(--radius-sm); border:1px solid var(--border-color); display:flex; flex-direction:column; gap:8px;">
+          <div style="display:flex; justify-content:space-between; align-items:center;">
+            <span style="font-size:13px; font-weight:700; color:var(--text-primary);">🎯 Daily Target: ${allocStats.targetMinutes} mins</span>
+            <span style="font-size:12px; font-weight:700; color:var(--accent);">${allocStats.completedMinutes} / ${allocStats.targetMinutes} mins completed today</span>
+          </div>
+          <div style="height:8px; background-color:var(--bg-secondary); border-radius:4px; overflow:hidden;">
+            <div style="width:${allocStats.percent}%; height:100%; background:var(--accent-gradient); border-radius:4px;"></div>
+          </div>
+          <div style="display:flex; align-items:center; gap:8px; margin-top:4px;">
+            <span style="font-size:11px; color:var(--text-muted); font-weight:600;">Scheduled Today: ${allocStats.totalMinutes} mins</span>
+            <button class="btn btn-primary btn-sm quick-schedule-alloc-btn" data-proj-id="${proj.id}" style="margin-left:auto; font-size:11px; height:24px; padding:0 8px;">
+              ⚡ Schedule 1 hr Slot
+            </button>
+          </div>
+        </div>
+      ` : ''}
+
+      <!-- Subtasks & Roadmap Section -->
       <div>
         <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
-          <span style="font-size:12px; font-weight:800; text-transform:uppercase; letter-spacing:0.05em; color:var(--text-secondary);">
-            ${proj.isDailyAllocation ? 'Daily Allocation Progress' : `Subtasks & Roadmap (${(proj.subtasks || []).length})`}
-          </span>
-          ${(!proj.isDailyAllocation && proj.subtasks && proj.subtasks.length > 0) ? `
+          <div style="display:flex; align-items:center; gap:6px;">
+            <span style="font-size:12px; font-weight:800; text-transform:uppercase; letter-spacing:0.05em; color:var(--text-secondary);">
+              Subtasks & Roadmap (${activeTasks.length} active${completedForeverTasks.length > 0 ? `, ${completedForeverTasks.length} done forever` : ''})
+            </span>
+          </div>
+          ${allSub.length > 0 ? `
             <button class="btn btn-danger btn-sm clear-proj-tasks-btn" data-proj-id="${proj.id}" style="font-size:10px; height:22px; padding:0 8px;" title="Remove all tasks from this project">
               🗑 Clear All Tasks
             </button>
           ` : ''}
         </div>
-        <div>
-          ${proj.isDailyAllocation ? `
-            <div style="background-color:var(--bg-tertiary); padding:16px; border-radius:var(--radius-sm); border:1px solid var(--border-color); display:flex; flex-direction:column; gap:8px;">
-              <div style="display:flex; justify-content:space-between; align-items:center;">
-                <span style="font-size:13px; font-weight:700; color:var(--text-primary);">🎯 Daily Goal: ${allocStats.targetMinutes} mins</span>
-                <span style="font-size:12px; font-weight:700; color:var(--accent);">${allocStats.completedMinutes} / ${allocStats.targetMinutes} mins completed today</span>
-              </div>
-              <div style="height:8px; background-color:var(--bg-secondary); border-radius:4px; overflow:hidden;">
-                <div style="width:${allocStats.percent}%; height:100%; background:var(--accent-gradient); border-radius:4px;"></div>
-              </div>
-              <div style="display:flex; align-items:center; gap:8px; margin-top:4px;">
-                <span style="font-size:11px; color:var(--text-muted); font-weight:600;">Scheduled Today: ${allocStats.totalMinutes} mins</span>
-                <button class="btn btn-primary btn-sm quick-schedule-alloc-btn" data-proj-id="${proj.id}" style="margin-left:auto; font-size:11px; height:24px; padding:0 8px;">
-                  ⚡ Schedule 1 hr Slot
-                </button>
-              </div>
-            </div>
-          ` : `
-            <div style="display:flex; flex-direction:column; gap:8px;">
-              ${(!proj.subtasks || proj.subtasks.length === 0) ? `
-                <span style="font-size:12px; color:var(--text-muted); font-style:italic;">No tasks added to this project yet. Add one below!</span>
-              ` : proj.subtasks.map((sub, sIdx) => `
-                <div style="display:flex; align-items:center; gap:8px; background:var(--bg-tertiary); padding:6px 10px; border-radius:var(--radius-sm); border:1px solid var(--border-color);" class="subtask-row" data-proj-id="${proj.id}" data-idx="${sIdx}">
-                  <input type="checkbox" class="subtask-checkbox" data-proj-id="${proj.id}" data-idx="${sIdx}" ${sub.completed ? 'checked' : ''} style="width:16px; height:16px; cursor:pointer;">
-                  <span style="font-size:13px; flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; ${sub.completed ? 'text-decoration:line-through; color:var(--text-muted);' : 'font-weight:600; color:var(--text-primary);'}" class="subtask-name-text">${sub.name}</span>
-                  <span style="font-size:10px; color:var(--text-muted); font-family:var(--font-mono); background:var(--bg-secondary); padding:2px 6px; border-radius:4px; flex-shrink:0;">~${sub.estimatedMinutes || 30} mins</span>
-                  <button class="btn btn-secondary btn-sm edit-subtask-btn" data-proj-id="${proj.id}" data-idx="${sIdx}" style="padding:2px 6px; height:24px; font-size:11px;" title="Edit Task">
+
+        <!-- Active Tasks List -->
+        <div style="display:flex; flex-direction:column; gap:8px;">
+          ${activeTasks.length === 0 ? `
+            <span style="font-size:12px; color:var(--text-muted); font-style:italic;">No active tasks in this project. Add one below!</span>
+          ` : activeTasks.map(sub => {
+            const isDoneToday = state.isTaskCompletedToday(sub, activeDate);
+            return `
+              <div style="display:flex; align-items:center; gap:8px; background:var(--bg-tertiary); padding:8px 10px; border-radius:var(--radius-sm); border:1px solid ${isDoneToday ? 'rgba(16, 185, 129, 0.4)' : 'var(--border-color)'};" class="subtask-row" data-proj-id="${proj.id}" data-task-id="${sub.id}">
+                <!-- Done Today Checkbox -->
+                <div style="display:flex; align-items:center; gap:6px;">
+                  <input type="checkbox" class="subtask-today-check" data-proj-id="${proj.id}" data-task-id="${sub.id}" ${isDoneToday ? 'checked' : ''} style="width:16px; height:16px; cursor:pointer;" title="${isDoneToday ? 'Completed today (uncheck to undo)' : 'Mark done for today'}">
+                  ${isDoneToday ? `<span class="badge" style="background:rgba(16,185,129,0.15); color:#10b981; font-size:10px; padding:1px 5px; border-radius:3px; font-weight:700;">Done Today</span>` : ''}
+                </div>
+
+                <!-- Task Name & Duration -->
+                <span style="font-size:13px; flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; ${isDoneToday ? 'text-decoration:line-through; opacity:0.65;' : 'font-weight:600; color:var(--text-primary);'}" class="subtask-name-text">
+                  ${sub.name}
+                </span>
+                <span style="font-size:10px; color:var(--text-muted); font-family:var(--font-mono); background:var(--bg-secondary); padding:2px 6px; border-radius:4px; flex-shrink:0;">~${sub.estimatedMinutes || 30}m</span>
+
+                <!-- Action buttons -->
+                <div style="display:flex; align-items:center; gap:4px; flex-shrink:0;">
+                  <button class="btn btn-primary btn-sm schedule-subtask-btn" data-proj-id="${proj.id}" data-task-id="${sub.id}" data-task-name="${encodeURIComponent(sub.name)}" style="padding:0 8px; height:24px; font-size:11px; font-weight:700;" title="Schedule into today's first available slot">
+                    ⚡ Schedule
+                  </button>
+                  <button class="btn btn-secondary btn-sm edit-subtask-btn" data-proj-id="${proj.id}" data-task-id="${sub.id}" style="padding:0 6px; height:24px; font-size:11px;" title="Edit Task Name & Duration">
                     ${icons.edit}
                   </button>
-                  <button class="btn btn-danger btn-sm delete-subtask-btn" data-proj-id="${proj.id}" data-idx="${sIdx}" style="padding:2px 6px; height:24px; font-size:11px;" title="Delete Task">
+                  <button class="btn btn-secondary btn-sm complete-forever-subtask-btn" data-proj-id="${proj.id}" data-task-id="${sub.id}" style="padding:0 6px; height:24px; font-size:10px; color:var(--text-secondary);" title="Mark Completed Forever (Overall)">
+                    ✓ Forever
+                  </button>
+                  <button class="btn btn-danger btn-sm delete-subtask-btn" data-proj-id="${proj.id}" data-task-id="${sub.id}" style="padding:0 6px; height:24px; font-size:11px;" title="Delete Task">
                     ${icons.trash}
+                  </button>
+                </div>
+              </div>
+            `;
+          }).join('')}
+        </div>
+
+        <!-- Completed Forever Tasks Archive -->
+        ${completedForeverTasks.length > 0 ? `
+          <details style="margin-top:10px; font-size:12px; color:var(--text-muted);">
+            <summary style="cursor:pointer; font-weight:600; padding:4px 0;">✓ Show ${completedForeverTasks.length} Completed Forever Task${completedForeverTasks.length > 1 ? 's' : ''}</summary>
+            <div style="display:flex; flex-direction:column; gap:4px; margin-top:6px; padding-left:8px;">
+              ${completedForeverTasks.map(ct => `
+                <div style="display:flex; align-items:center; justify-content:space-between; background:var(--bg-secondary); padding:4px 8px; border-radius:4px; border:1px solid var(--border-color); font-size:12px;">
+                  <div style="display:flex; align-items:center; gap:6px; text-decoration:line-through; opacity:0.65;">
+                    <span>✓</span>
+                    <span>${ct.name}</span>
+                    <span style="font-size:10px; font-family:var(--font-mono);">(${ct.estimatedMinutes || 30}m)</span>
+                  </div>
+                  <button class="btn btn-secondary btn-sm restore-forever-subtask-btn" data-proj-id="${proj.id}" data-task-id="${ct.id}" style="height:22px; font-size:10px; padding:0 6px;" title="Bring back to active tasks">
+                    Restore
                   </button>
                 </div>
               `).join('')}
             </div>
-            
-            <!-- Add Subtask Input Form -->
-            <div style="display:flex; gap:8px; margin-top:12px;">
-              <input type="text" class="premium-input new-subtask-name" data-proj-id="${proj.id}" placeholder="New subtask name..." style="flex:2; height:28px; font-size:12px; padding:2px 8px;">
-              <input type="number" class="premium-input new-subtask-est" data-proj-id="${proj.id}" placeholder="Est. Mins (e.g. 30)" style="flex:1; height:28px; font-size:12px; padding:2px 8px;">
-              <button class="btn btn-primary btn-sm add-subtask-btn" data-proj-id="${proj.id}" style="height:28px; padding:0 12px; font-size:11px;">Add Task</button>
-            </div>
-          `}
+          </details>
+        ` : ''}
+
+        <!-- Add Subtask Input Form -->
+        <div style="display:flex; gap:8px; margin-top:12px;">
+          <input type="text" class="premium-input new-subtask-name" data-proj-id="${proj.id}" placeholder="New task name..." style="flex:2; height:28px; font-size:12px; padding:2px 8px;">
+          <input type="number" class="premium-input new-subtask-est" data-proj-id="${proj.id}" placeholder="Mins" value="45" style="width:70px; height:28px; font-size:12px; padding:2px 8px;">
+          <button class="btn btn-primary btn-sm add-subtask-btn" data-proj-id="${proj.id}" style="height:28px; padding:0 12px; font-size:11px; font-weight:700;">+ Add Task</button>
         </div>
       </div>
       
@@ -255,8 +305,9 @@ export function renderProjects(container, state) {
 
     const sessionDuration = proj.durationPerSessionMinutes || proj.dailyAllocationMinutes || 60;
 
-    if (proj.subtasks && proj.subtasks.some(s => !s.completed)) {
-      const nextTask = proj.subtasks.find(s => !s.completed);
+    const activePendingForToday = (proj.subtasks || []).filter(s => !s.completed && !state.isTaskCompletedToday(s, activeDate));
+    if (activePendingForToday.length > 0) {
+      const nextTask = activePendingForToday[0];
       recommendedTask = nextTask;
       recommendedProject = proj;
       if (proj.cadence && proj.cadence.isDue) {
@@ -908,47 +959,103 @@ function bindProjectsEvents(container, state, processedProjects) {
     });
   });
 
-  // E. Project subtask checkbox change
-  container.querySelectorAll('.subtask-checkbox').forEach(check => {
-    check.addEventListener('change', async () => {
+  // E. Done for Today Checkbox
+  container.querySelectorAll('.subtask-today-check').forEach(check => {
+    check.addEventListener('change', async (e) => {
+      e.stopPropagation();
       const projId = Number(check.getAttribute('data-proj-id'));
-      const idx = parseInt(check.getAttribute('data-idx'));
-      
-      const project = state.projects.find(p => p.id === projId);
-      if (project && project.subtasks && project.subtasks[idx]) {
-        project.subtasks[idx].completed = check.checked;
-        project.lastWorkedOn = Date.now();
-        await state.updateProject(projId, { subtasks: project.subtasks, lastWorkedOn: project.lastWorkedOn });
-        renderProjects(container, state);
+      const taskId = check.getAttribute('data-task-id');
+      await state.toggleTaskDoneToday(projId, taskId);
+      if (check.checked) {
+        confetti({ particleCount: 35, spread: 25 });
+        showToast("Task completed for today! (Resets tomorrow)");
+      } else {
+        showToast("Task marked pending for today");
       }
+      renderProjects(container, state);
     });
   });
 
-  // Edit Subtask Name & Estimate
-  container.querySelectorAll('.edit-subtask-btn').forEach(btn => {
+  // Schedule Subtask into first available slot today
+  container.querySelectorAll('.schedule-subtask-btn').forEach(btn => {
     btn.addEventListener('click', async (e) => {
       e.stopPropagation();
       const projId = Number(btn.getAttribute('data-proj-id'));
-      const idx = parseInt(btn.getAttribute('data-idx'));
+      const taskId = btn.getAttribute('data-task-id');
       const project = state.projects.find(p => p.id === projId);
-      if (project && project.subtasks && project.subtasks[idx]) {
-        const current = project.subtasks[idx];
-        const newName = prompt("Edit task name:", current.name);
-        if (newName === null) return;
-        const trimmed = newName.trim();
-        if (!trimmed) {
-          alert("Task name cannot be empty!");
-          return;
-        }
-        const newEstStr = prompt("Estimated minutes:", current.estimatedMinutes || 30);
-        const newEst = parseInt(newEstStr) || current.estimatedMinutes || 30;
-        project.subtasks[idx].name = trimmed;
-        project.subtasks[idx].estimatedMinutes = newEst;
-        project.lastWorkedOn = Date.now();
-        await state.updateProject(projId, { subtasks: project.subtasks, lastWorkedOn: project.lastWorkedOn });
-        showToast("Task updated");
-        renderProjects(container, state);
+      if (!project) return;
+      const task = (project.subtasks || []).find(s => s.id === taskId);
+      const taskName = task ? task.name : decodeURIComponent(btn.getAttribute('data-task-name') || '');
+
+      const activeDate = state.getActiveDate();
+      const day = state.days.find(d => d.date === activeDate);
+      if (!day) return;
+
+      const freeSlot = state.timeIntervals.find(slot => !day.schedule.some(t => t.plannedTime === slot));
+      if (!freeSlot) {
+        alert(`No free time slots available on your schedule for ${activeDate}! Please free up a slot in the Daily Planner first.`);
+        return;
       }
+
+      const newTask = {
+        id: 't-' + Date.now(),
+        name: `${project.name}: ${taskName}`,
+        plannedTime: freeSlot,
+        status: 'pending',
+        missedReason: '',
+        actualTime: '',
+        type: project.type === 'flexible' ? 'general' : project.type
+      };
+
+      day.schedule.push(newTask);
+      day.schedule.sort((a, b) => {
+        const idxA = state.timeIntervals.indexOf(a.plannedTime);
+        const idxB = state.timeIntervals.indexOf(b.plannedTime);
+        return idxA - idxB;
+      });
+
+      await state.updateDay(day.date, { schedule: day.schedule });
+      project.lastWorkedOn = Date.now();
+      await state.updateProject(projId, { lastWorkedOn: project.lastWorkedOn });
+
+      confetti({ particleCount: 40, spread: 30 });
+      showToast(`⚡ Scheduled "${taskName}" at ${freeSlot} on ${activeDate}!`);
+      renderProjects(container, state);
+    });
+  });
+
+  // Edit Subtask Name & Estimate via sleek modal
+  container.querySelectorAll('.edit-subtask-btn').forEach(btn => {
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const projId = Number(btn.getAttribute('data-proj-id'));
+      const taskId = btn.getAttribute('data-task-id');
+      showEditTaskModal(projId, taskId, state, () => renderProjects(container, state));
+    });
+  });
+
+  // Complete Subtask Forever (Permanent milestone completion)
+  container.querySelectorAll('.complete-forever-subtask-btn').forEach(btn => {
+    btn.addEventListener('click', async (e) => {
+      e.stopPropagation();
+      const projId = Number(btn.getAttribute('data-proj-id'));
+      const taskId = btn.getAttribute('data-task-id');
+      await state.toggleTaskDoneForever(projId, taskId);
+      confetti({ particleCount: 45, spread: 30 });
+      showToast("Task completed forever! (Moved to completed archive)");
+      renderProjects(container, state);
+    });
+  });
+
+  // Restore Completed Forever Subtask
+  container.querySelectorAll('.restore-forever-subtask-btn').forEach(btn => {
+    btn.addEventListener('click', async (e) => {
+      e.stopPropagation();
+      const projId = Number(btn.getAttribute('data-proj-id'));
+      const taskId = btn.getAttribute('data-task-id');
+      await state.toggleTaskDoneForever(projId, taskId);
+      showToast("Task restored to active roadmap");
+      renderProjects(container, state);
     });
   });
 
@@ -957,16 +1064,14 @@ function bindProjectsEvents(container, state, processedProjects) {
     btn.addEventListener('click', async (e) => {
       e.stopPropagation();
       const projId = Number(btn.getAttribute('data-proj-id'));
-      const idx = parseInt(btn.getAttribute('data-idx'));
+      const taskId = btn.getAttribute('data-task-id');
       const project = state.projects.find(p => p.id === projId);
-      if (project && project.subtasks && project.subtasks[idx]) {
-        if (confirm(`Delete task "${project.subtasks[idx].name}"?`)) {
-          project.subtasks.splice(idx, 1);
-          project.lastWorkedOn = Date.now();
-          await state.updateProject(projId, { subtasks: project.subtasks, lastWorkedOn: project.lastWorkedOn });
-          showToast("Task deleted");
-          renderProjects(container, state);
-        }
+      const task = project && project.subtasks ? project.subtasks.find(s => s.id === taskId) : null;
+      const tName = task ? `"${task.name}"` : 'this task';
+      if (confirm(`Delete task ${tName}?`)) {
+        await state.deleteProjectTask(projId, taskId);
+        showToast("Task deleted");
+        renderProjects(container, state);
       }
     });
   });
@@ -1712,5 +1817,88 @@ export function showEditProjectModal(projId, state, container) {
     await state.updateProject(projId, updates);
     showToast("Project updated successfully");
     refreshView();
+  });
+}
+
+export function showEditTaskModal(projId, taskId, state, onUpdateCallback) {
+  const project = state.projects.find(p => p.id === Number(projId));
+  if (!project || !project.subtasks) return;
+  const task = project.subtasks.find(s => s.id === taskId);
+  if (!task) return;
+
+  const existing = document.querySelector('.edit-task-modal-backdrop');
+  if (existing) existing.remove();
+
+  const backdrop = document.createElement('div');
+  backdrop.className = 'edit-task-modal-backdrop modal-backdrop-fade';
+  backdrop.style.cssText = `
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100vw;
+    height: 100vh;
+    background: rgba(0, 0, 0, 0.6);
+    backdrop-filter: blur(4px);
+    z-index: 10002;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 16px;
+  `;
+
+  backdrop.innerHTML = `
+    <div style="background: var(--bg-secondary); border: 1px solid var(--border-color); border-radius: var(--radius-md); width: 100%; max-width: 420px; box-shadow: var(--shadow-lg); padding: 20px; display: flex; flex-direction: column; gap: 14px;">
+      <div style="display:flex; justify-content:space-between; align-items:center;">
+        <span style="font-size:14px; font-weight:800; color:var(--text-primary);">✏️ Edit Task</span>
+        <button id="close-edit-task-modal-btn" style="background:none; border:none; color:var(--text-muted); cursor:pointer; font-size:20px; line-height:1;">&times;</button>
+      </div>
+
+      <div style="font-size:11px; color:var(--text-muted);">
+        Project: <strong style="color:var(--text-primary);">${project.name}</strong>
+      </div>
+
+      <div style="display:flex; flex-direction:column; gap:4px;">
+        <label style="font-size:11px; font-weight:700; color:var(--text-secondary);">Task Name</label>
+        <input type="text" id="edit-task-name-input" class="premium-input" value="${task.name.replace(/"/g, '&quot;')}" style="height:34px; font-size:13px; padding:4px 10px;">
+      </div>
+
+      <div style="display:flex; flex-direction:column; gap:4px;">
+        <label style="font-size:11px; font-weight:700; color:var(--text-secondary);">Estimated Duration (Minutes)</label>
+        <input type="number" id="edit-task-est-input" class="premium-input" value="${task.estimatedMinutes || 30}" min="5" max="720" style="height:34px; font-size:13px; padding:4px 10px;">
+      </div>
+
+      <div style="display:flex; justify-content:flex-end; gap:8px; margin-top:8px;">
+        <button class="btn btn-secondary btn-sm" id="cancel-edit-task-btn">Cancel</button>
+        <button class="btn btn-primary btn-sm" id="save-edit-task-btn" style="font-weight:700; padding:6px 16px;">Save Changes</button>
+      </div>
+    </div>
+  `;
+
+  document.body.appendChild(backdrop);
+
+  const closeModal = () => backdrop.remove();
+  backdrop.querySelector('#close-edit-task-modal-btn').addEventListener('click', closeModal);
+  backdrop.querySelector('#cancel-edit-task-btn').addEventListener('click', closeModal);
+  backdrop.addEventListener('click', (e) => { if (e.target === backdrop) closeModal(); });
+
+  const nameInput = backdrop.querySelector('#edit-task-name-input');
+  nameInput.focus();
+
+  const handleSave = async () => {
+    const newName = nameInput.value.trim();
+    const newEst = parseInt(backdrop.querySelector('#edit-task-est-input').value) || 30;
+    if (!newName) {
+      alert("Task name cannot be empty!");
+      return;
+    }
+    await state.updateProjectTask(projId, taskId, { name: newName, estimatedMinutes: newEst });
+    closeModal();
+    showToast("Task updated successfully");
+    if (onUpdateCallback) onUpdateCallback();
+  };
+
+  backdrop.querySelector('#save-edit-task-btn').addEventListener('click', handleSave);
+  nameInput.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') handleSave();
   });
 }

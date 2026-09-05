@@ -857,8 +857,15 @@ class AppState {
     const isScheduledToday = day && day.schedule ? day.schedule.some(t => t.name === project.name || t.name.startsWith(prefix)) : false;
     const isCompletedToday = day && day.schedule ? day.schedule.some(t => (t.name === project.name || t.name.startsWith(prefix)) && (t.status === 'completed' || t.status === 'delayed')) : false;
 
-    // Check if recorded in completedDates or lastCompletedDate
-    const isMarkedDoneToday = isCompletedToday || (project.completedDates && project.completedDates.includes(activeDate)) || (project.lastCompletedDate === activeDate);
+    // Check if recorded in completedDates or lastCompletedDate or all active subtasks completed today
+    const hasSubtasks = Array.isArray(project.subtasks) && project.subtasks.length > 0;
+    const activeSubtasks = hasSubtasks ? project.subtasks.filter(s => !s.completed) : [];
+    const allActiveSubtasksDoneToday = activeSubtasks.length > 0 && activeSubtasks.every(s => this.isTaskCompletedToday(s, activeDate));
+
+    const isMarkedDoneToday = isCompletedToday || 
+      (project.completedDates && project.completedDates.includes(activeDate)) || 
+      (project.lastCompletedDate === activeDate) ||
+      allActiveSubtasksDoneToday;
 
     if (isAvailableTime) {
       if (isMarkedDoneToday) {
@@ -1007,6 +1014,90 @@ class AppState {
     await this.fetchData();
     if (this.syncEnabled) await this.pushToCloud();
     this.notify();
+  }
+
+  // Task Completion & Editing helpers
+  isTaskCompletedToday(task, dateStr = null) {
+    if (!task) return false;
+    if (task.completed || task.completedForever) return true;
+    const date = dateStr || this.getActiveDate();
+    return Array.isArray(task.completedDates) && task.completedDates.includes(date);
+  }
+
+  isTaskCompletedForever(task) {
+    if (!task) return false;
+    return Boolean(task.completed || task.completedForever);
+  }
+
+  async toggleTaskDoneToday(projId, taskId, dateStr = null) {
+    const project = this.projects.find(p => p.id === Number(projId));
+    if (!project || !project.subtasks) return;
+    const task = project.subtasks.find(s => s.id === taskId);
+    if (!task) return;
+
+    const date = dateStr || this.getActiveDate();
+    task.completedDates = Array.isArray(task.completedDates) ? task.completedDates : [];
+    const idx = task.completedDates.indexOf(date);
+    if (idx >= 0) {
+      task.completedDates.splice(idx, 1);
+    } else {
+      task.completedDates.push(date);
+      project.lastWorkedOn = Date.now();
+      project.lastCompletedDate = date;
+    }
+    await this.updateProject(project.id, {
+      subtasks: project.subtasks,
+      lastWorkedOn: project.lastWorkedOn,
+      lastCompletedDate: project.lastCompletedDate
+    });
+  }
+
+  async toggleTaskDoneForever(projId, taskId) {
+    const project = this.projects.find(p => p.id === Number(projId));
+    if (!project || !project.subtasks) return;
+    const task = project.subtasks.find(s => s.id === taskId);
+    if (!task) return;
+
+    task.completed = !task.completed;
+    task.completedForever = task.completed;
+    if (task.completed) {
+      const date = this.getActiveDate();
+      task.completedDates = Array.isArray(task.completedDates) ? task.completedDates : [];
+      if (!task.completedDates.includes(date)) {
+        task.completedDates.push(date);
+      }
+      project.lastWorkedOn = Date.now();
+    }
+    await this.updateProject(project.id, {
+      subtasks: project.subtasks,
+      lastWorkedOn: project.lastWorkedOn
+    });
+  }
+
+  async updateProjectTask(projId, taskId, updates) {
+    const project = this.projects.find(p => p.id === Number(projId));
+    if (!project || !project.subtasks) return;
+    const task = project.subtasks.find(s => s.id === taskId);
+    if (!task) return;
+
+    if (updates.name !== undefined) task.name = updates.name.trim();
+    if (updates.estimatedMinutes !== undefined) task.estimatedMinutes = Number(updates.estimatedMinutes) || 30;
+    project.lastWorkedOn = Date.now();
+    await this.updateProject(project.id, {
+      subtasks: project.subtasks,
+      lastWorkedOn: project.lastWorkedOn
+    });
+  }
+
+  async deleteProjectTask(projId, taskId) {
+    const project = this.projects.find(p => p.id === Number(projId));
+    if (!project || !project.subtasks) return;
+    project.subtasks = project.subtasks.filter(s => s.id !== taskId);
+    project.lastWorkedOn = Date.now();
+    await this.updateProject(project.id, {
+      subtasks: project.subtasks,
+      lastWorkedOn: project.lastWorkedOn
+    });
   }
 
   async clearCategoryTasks(categoryType) {

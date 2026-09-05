@@ -19,12 +19,16 @@ export function renderPlanner(container, state) {
   }
 
   // Aggregate all pending tasks across categories
+  const activeDate = state.expandedDayDate || state.getActiveDate();
   const allPendingTasks = [];
   state.projects.forEach(p => {
+    if (p.status === 'Completed' || p.status === 'Paused') return;
     if (p.subtasks) {
       p.subtasks.filter(s => !s.completed).forEach(sub => {
+        const isDoneToday = state.isTaskCompletedToday(sub, activeDate);
         allPendingTasks.push({
           ...sub,
+          isDoneToday,
           projectId: p.id,
           projectName: p.name,
           projectType: p.type
@@ -102,12 +106,13 @@ export function renderPlanner(container, state) {
           ` : allPendingTasks.map(task => {
             const catLabel = task.projectType === 'study' ? 'Study' : task.projectType === 'etsy_seo' ? 'Etsy' : task.projectType === 'quran' ? 'Quran' : 'Project';
             return `
-              <div class="planner-backlog-item" data-cat="${task.projectType}" style="display:flex; align-items:center; justify-content:space-between; background:var(--bg-tertiary); padding:6px 10px; border-radius:var(--radius-sm); border:1px solid var(--border-color); gap:8px;">
+              <div class="planner-backlog-item" data-cat="${task.projectType}" style="display:flex; align-items:center; justify-content:space-between; background:var(--bg-tertiary); padding:6px 10px; border-radius:var(--radius-sm); border:1px solid ${task.isDoneToday ? 'rgba(16, 185, 129, 0.4)' : 'var(--border-color)'}; gap:8px;">
                 <div style="display:flex; align-items:center; gap:8px; flex:1; min-width:0;">
                   <span class="badge" style="font-size:9px; font-weight:800; text-transform:uppercase; padding:2px 5px; border-radius:3px; background:var(--bg-secondary); color:var(--accent);">${catLabel}</span>
-                  <span style="font-size:12px; font-weight:600; color:var(--text-primary); overflow:hidden; text-overflow:ellipsis; white-space:nowrap;" title="${task.projectName}: ${task.name}">
+                  <span style="font-size:12px; font-weight:600; color:var(--text-primary); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; ${task.isDoneToday ? 'text-decoration:line-through; opacity:0.65;' : ''}" title="${task.projectName}: ${task.name}">
                     ${task.projectName}: <strong>${task.name}</strong>
                   </span>
+                  ${task.isDoneToday ? `<span class="badge" style="background:rgba(16,185,129,0.15); color:#10b981; font-size:9px; padding:1px 4px; border-radius:3px; font-weight:700;">Done Today</span>` : ''}
                   <span style="font-size:10px; font-family:var(--font-mono); color:var(--text-muted); margin-left:auto; flex-shrink:0;">~${task.estimatedMinutes || 30}m</span>
                 </div>
                 <button class="btn btn-primary btn-sm planner-schedule-backlog-btn" data-proj-id="${task.projectId}" data-task-name="${encodeURIComponent(task.name)}" data-cat="${task.projectType}" style="height:24px; padding:0 8px; font-size:10px; font-weight:700;">

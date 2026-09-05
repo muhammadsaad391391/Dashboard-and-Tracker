@@ -107,7 +107,7 @@ export function showPlannerCellPopup(e, cell, date, time, state, categoryType = 
     <div id="popup-quick-task-panel" style="display:none; flex-direction:column; gap:8px; background:var(--bg-tertiary); padding:10px; border-radius:var(--radius-sm); border:1px solid var(--border-color);">
       <span style="font-size:11px; font-weight:700; color:var(--text-secondary);">Add Subtask to Project</span>
       <select id="popup-target-project" class="premium-select" style="font-size:12px; padding:4px; height:30px;">
-        ${allActiveProjects.filter(p => !p.isDailyAllocation).map(p => `<option value="${p.id}">${p.name}</option>`).join('')}
+        ${allActiveProjects.map(p => `<option value="${p.id}">${p.name}</option>`).join('')}
       </select>
       <input type="text" id="popup-new-task-name" class="premium-input" placeholder="Task name..." style="height:30px; font-size:12px; padding:4px 8px;">
       <button class="btn btn-primary btn-sm" id="popup-quick-task-save" style="height:28px; font-size:11px; justify-content:center; font-weight:700;">Save & Schedule</button>
@@ -191,9 +191,8 @@ export function showPlannerCellPopup(e, cell, date, time, state, categoryType = 
         const sub = project.subtasks.find(s => s.id === taskIdStr);
         if (sub) {
           taskName = `${project.name}: ${sub.name}`;
-          sub.completed = true;
           project.lastWorkedOn = Date.now();
-          await state.updateProject(projId, { subtasks: project.subtasks, lastWorkedOn: project.lastWorkedOn });
+          await state.updateProject(projId, { lastWorkedOn: project.lastWorkedOn });
         }
       }
 

@@ -144,8 +144,9 @@ export function renderDashboard(container, state) {
     if (proj.cadence && proj.cadence.isCompleted) continue;
 
     const sessionDuration = proj.durationPerSessionMinutes || proj.dailyAllocationMinutes || 60;
-    if (proj.subtasks && proj.subtasks.some(s => !s.completed)) {
-      dashboardNextTask = proj.subtasks.find(s => !s.completed);
+    const activePendingForToday = (proj.subtasks || []).filter(s => !s.completed && !state.isTaskCompletedToday(s, activeDate));
+    if (activePendingForToday.length > 0) {
+      dashboardNextTask = activePendingForToday[0];
       dashboardNextProject = proj;
       if (proj.cadence && proj.cadence.isDue) {
         dashboardNextReason = `Due today • ${proj.cadence.label} cadence`;
