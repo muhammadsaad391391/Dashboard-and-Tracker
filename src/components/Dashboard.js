@@ -2,6 +2,7 @@ import { icons } from '../icons.js';
 import { calculateStreak } from './Header.js';
 import confetti from 'canvas-confetti';
 import { showPlannerCellPopup } from './PlannerCellPopup.js';
+import { showToast } from '../main.js';
 
 export function renderDashboard(container, state) {
   // 1. Identify the active date
@@ -98,10 +99,84 @@ export function renderDashboard(container, state) {
     streakMessage = `Incredible focus! You are maintaining a ${currentStreak}-day success streak. Keep it up! 🔥`;
   }
 
+  // Calculate Cadence & Priority Recommendations for Dashboard
+  const todayDateObj = new Date(activeDate + 'T00:00:00');
+  const processedProjects = (state.projects || []).map(proj => {
+    const cadence = state.getProjectCadenceInfo(proj, activeDate);
+    let urgency = 20;
+    let daysRemaining = 999;
+    if (proj.deadline) {
+      const deadlineDate = new Date(proj.deadline + 'T00:00:00');
+      const diffTime = deadlineDate - todayDateObj;
+      daysRemaining = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+      if (daysRemaining <= 0) urgency = 100;
+      else if (daysRemaining <= 3) urgency = 90;
+      else if (daysRemaining <= 7) urgency = 75;
+      else urgency = 40;
+    }
+    let importance = 50;
+    if (proj.priority === 'critical') importance = 100;
+    else if (proj.priority === 'high') importance = 75;
+    else if (proj.priority === 'medium') importance = 50;
+    else if (proj.priority === 'low') importance = 25;
+
+    const cadenceBoost = cadence.urgencyBoost || 0;
+    let priorityScore = Math.round(
+      (urgency * 0.25) +
+      (importance * 0.20) +
+      (cadenceBoost * 0.25) +
+      (10)
+    );
+    if (cadence.isCompleted) {
+      priorityScore = Math.max(5, priorityScore - 40);
+    }
+    return { ...proj, cadence, daysRemaining, priorityScore };
+  });
+
+  processedProjects.sort((a, b) => b.priorityScore - a.priorityScore);
+
+  let dashboardNextTask = null;
+  let dashboardNextProject = null;
+  let dashboardNextReason = '';
+
+  for (const proj of processedProjects) {
+    if (proj.status === 'Completed' || proj.status === 'Paused') continue;
+    if (proj.cadence && proj.cadence.isCompleted) continue;
+
+    const sessionDuration = proj.durationPerSessionMinutes || proj.dailyAllocationMinutes || 60;
+    if (proj.subtasks && proj.subtasks.some(s => !s.completed)) {
+      dashboardNextTask = proj.subtasks.find(s => !s.completed);
+      dashboardNextProject = proj;
+      if (proj.cadence && proj.cadence.isDue) {
+        dashboardNextReason = `Due today • ${proj.cadence.label} cadence`;
+      } else if (proj.deadline && proj.daysRemaining <= 3) {
+        dashboardNextReason = `Urgent deadline (${proj.daysRemaining}d left)`;
+      } else {
+        dashboardNextReason = `Top priority project (${proj.priorityScore} Priority)`;
+      }
+      break;
+    } else {
+      dashboardNextTask = {
+        id: 'session-' + proj.id,
+        name: `${proj.name}: Focus Session`,
+        estimatedMinutes: sessionDuration
+      };
+      dashboardNextProject = proj;
+      if (proj.cadence && proj.cadence.isDue) {
+        dashboardNextReason = `Due today • ${proj.cadence.label} commitment`;
+      } else {
+        dashboardNextReason = `Top priority project session`;
+      }
+      break;
+    }
+  }
+
+  const dailyCapacity = state.calculateDailyTimeCapacity(activeDate);
+
   // Render Dashboard HTML
   container.innerHTML = `
     <!-- Streak / Milestone Banner -->
-    <div class="streak-banner" style="margin-bottom: 24px;">
+    <div class="streak-banner" style="margin-bottom: 20px;">
       <div class="streak-banner-info">
         <h2 class="streak-banner-title">Welcome to Aether space</h2>
         <p class="streak-banner-desc">${streakMessage}</p>
@@ -111,6 +186,59 @@ export function renderDashboard(container, state) {
         <span>Streak: ${currentStreak} Day${currentStreak === 1 ? '' : 's'}</span>
       </div>
       <div class="streak-banner-bg">${currentStreak}</div>
+    </div>
+
+    <!-- ⚡ What To Do Next & Daily Capacity Banner -->
+    <div class="hero-next-action-card" style="margin-bottom: 24px;">
+      <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:16px;">
+        <div style="display:flex; flex-direction:column; gap:6px; max-width:650px;">
+          <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
+            <span style="font-size:11px; font-weight:800; letter-spacing:0.08em; text-transform:uppercase; color:var(--accent); display:flex; align-items:center; gap:4px;">
+              ⚡ RECOMMENDED NEXT ACTION
+            </span>
+            ${dashboardNextProject ? `
+              <span class="cadence-badge ${dashboardNextProject.cadence.badgeClass}">${dashboardNextProject.cadence.label}</span>
+              <span class="cadence-status-pill ${dashboardNextProject.cadence.isDue ? 'due-today' : 'on-track'}">${dashboardNextProject.cadence.statusText}</span>
+            ` : ''}
+          </div>
+          ${dashboardNextTask ? `
+            <h3 style="font-size:18px; font-weight:900; color:var(--text-primary); margin:0; line-height:1.3;">
+              ${dashboardNextTask.name}
+            </h3>
+            <div style="display:flex; align-items:center; gap:10px; font-size:12px; color:var(--text-secondary); flex-wrap:wrap;">
+              <span>Project: <strong style="color:var(--text-primary);">${dashboardNextProject.name}</strong></span>
+              <span>•</span>
+              <span style="color:var(--accent); font-weight:700; font-family:var(--font-mono);">Priority: ${dashboardNextProject.priorityScore}/100</span>
+              <span>•</span>
+              <span style="font-family:var(--font-mono); background:var(--bg-secondary); padding:2px 8px; border-radius:4px; font-size:11px; font-weight:700; color:var(--text-primary);">⏱ ~${dashboardNextTask.estimatedMinutes || 45} mins</span>
+              <span>•</span>
+              <span style="font-style:italic;">${dashboardNextReason}</span>
+            </div>
+          ` : `
+            <h3 style="font-size:16px; font-weight:800; color:var(--text-primary); margin:0;">
+              🎉 All Priority Actions Completed Today!
+            </h3>
+            <p style="font-size:12px; color:var(--text-secondary); margin:0;">
+              Check Project Hub for more milestones or enjoy your free time.
+            </p>
+          `}
+        </div>
+
+        <div style="display:flex; flex-direction:column; gap:8px; align-items:flex-end;">
+          ${dashboardNextTask ? `
+            <button class="btn btn-primary" id="dashboard-schedule-next-btn" data-proj-id="${dashboardNextProject.id}" data-task-name="${dashboardNextTask.name}" data-task-est="${dashboardNextTask.estimatedMinutes || 45}" data-proj-type="${dashboardNextProject.type || 'general'}" style="height:38px; padding:0 18px; font-size:12px; font-weight:800; box-shadow:0 4px 14px rgba(99, 102, 241, 0.4); display:flex; align-items:center; gap:6px;">
+              <span>⚡</span> Schedule Right Now
+            </button>
+          ` : ''}
+          <div style="display:flex; align-items:center; gap:8px; font-size:11px; color:var(--text-secondary); flex-wrap:wrap;">
+            <span>Free Time Left: <strong style="color:var(--success); font-family:var(--font-mono);">${dailyCapacity.remainingFreeHours}h</strong></span>
+            <span>•</span>
+            <span>Doables: <strong style="color:var(--accent); font-family:var(--font-mono);">${dailyCapacity.doablesHours}h</strong></span>
+            <span>•</span>
+            <span>Scheduled: <strong style="color:#3b82f6; font-family:var(--font-mono);">${dailyCapacity.scheduledHours}h</strong></span>
+          </div>
+        </div>
+      </div>
     </div>
 
     <!-- Motivational Quote -->
@@ -306,6 +434,49 @@ export function renderDashboard(container, state) {
   const gotoNonNeg = container.querySelector('#goto-nonneg-btn');
   if (gotoNonNeg) {
     gotoNonNeg.addEventListener('click', () => state.setView('non-negotiables'));
+  }
+
+  // 1-Tap Schedule Next Recommended Action from Dashboard
+  const dbScheduleNextBtn = container.querySelector('#dashboard-schedule-next-btn');
+  if (dbScheduleNextBtn) {
+    dbScheduleNextBtn.addEventListener('click', async () => {
+      const projId = Number(dbScheduleNextBtn.getAttribute('data-proj-id'));
+      const taskName = dbScheduleNextBtn.getAttribute('data-task-name');
+      const type = dbScheduleNextBtn.getAttribute('data-proj-type') || 'general';
+      const proj = state.projects.find(p => p.id === projId);
+      if (!proj) return;
+
+      const firstFreeSlot = state.timeIntervals.find(slot => !activeDay.schedule.some(t => t.plannedTime === slot));
+      if (!firstFreeSlot) {
+        alert("No free time slots available on your schedule for today! Please free up a slot in Daily Planner first.");
+        return;
+      }
+
+      const formattedName = taskName.includes(proj.name) ? taskName : `${proj.name}: ${taskName}`;
+      const newTask = {
+        id: 't-' + Date.now() + Math.random().toString(36).substring(7),
+        name: formattedName,
+        plannedTime: firstFreeSlot,
+        status: 'pending',
+        missedReason: '',
+        actualTime: '',
+        type: type || proj.type || 'general'
+      };
+
+      activeDay.schedule.push(newTask);
+      activeDay.schedule.sort((a, b) => {
+        const idxA = state.timeIntervals.indexOf(a.plannedTime);
+        const idxB = state.timeIntervals.indexOf(b.plannedTime);
+        return idxA - idxB;
+      });
+
+      await state.updateDay(activeDay.date, { schedule: activeDay.schedule });
+      await state.updateProject(proj.id, { lastWorkedOn: Date.now() });
+
+      confetti({ particleCount: 50, spread: 45 });
+      showToast(`⚡ Scheduled "${formattedName}" for ${firstFreeSlot} today!`);
+      renderDashboard(container, state);
+    });
   }
 
   // Replicate previous day tasks handler

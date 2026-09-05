@@ -2128,3 +2128,119 @@ html.light .theme-switch-thumb {
   color: rgba(255, 255, 255, 0.9) !important;
 }
 
+/* Cadence Badges & Indicators */
+.cadence-badge {
+  font-size: 10px;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  padding: 2px 8px;
+  border-radius: 6px;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.cadence-badge.cadence-daily {
+  background: rgba(99, 102, 241, 0.12);
+  color: var(--accent);
+  border: 1px solid rgba(99, 102, 241, 0.3);
+}
+
+.cadence-badge.cadence-periodic {
+  background: rgba(245, 158, 11, 0.12);
+  color: #f59e0b;
+  border: 1px solid rgba(245, 158, 11, 0.3);
+}
+
+.cadence-badge.cadence-weekly {
+  background: rgba(59, 130, 246, 0.12);
+  color: #3b82f6;
+  border: 1px solid rgba(59, 130, 246, 0.3);
+}
+
+.cadence-badge.cadence-flexible {
+  background: var(--bg-tertiary);
+  color: var(--text-secondary);
+  border: 1px solid var(--border-color);
+}
+
+/* Cadence Real-time Status Badges */
+.cadence-status-pill {
+  font-size: 11px;
+  font-weight: 700;
+  padding: 3px 10px;
+  border-radius: 12px;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.cadence-status-pill.due-today {
+  background: rgba(239, 68, 68, 0.12);
+  color: #ef4444;
+  border: 1px solid rgba(239, 68, 68, 0.35);
+  animation: pulse-subtle 2s infinite ease-in-out;
+}
+
+.cadence-status-pill.done-today,
+.cadence-status-pill.done-week {
+  background: rgba(16, 185, 129, 0.12);
+  color: #10b981;
+  border: 1px solid rgba(16, 185, 129, 0.3);
+}
+
+.cadence-status-pill.due-week {
+  background: rgba(245, 158, 11, 0.12);
+  color: #f59e0b;
+  border: 1px solid rgba(245, 158, 11, 0.3);
+}
+
+.cadence-status-pill.on-track {
+  background: var(--bg-secondary);
+  color: var(--text-muted);
+  border: 1px solid var(--border-color);
+}
+
+@keyframes pulse-subtle {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.7; }
+}
+
+/* Time Capacity Visual Bar */
+.capacity-progress-bar {
+  display: flex;
+  height: 12px;
+  width: 100%;
+  background-color: var(--bg-secondary);
+  border-radius: 6px;
+  overflow: hidden;
+  border: 1px solid var(--border-color);
+}
+
+.capacity-seg-doables {
+  background: #6366f1;
+  transition: width 0.3s ease;
+}
+
+.capacity-seg-scheduled {
+  background: #3b82f6;
+  transition: width 0.3s ease;
+}
+
+.capacity-seg-free {
+  background: #10b981;
+  transition: width 0.3s ease;
+}
+
+/* Hero Next Action Card */
+.hero-next-action-card {
+  background: linear-gradient(135deg, rgba(99, 102, 241, 0.12) 0%, rgba(168, 85, 247, 0.08) 100%);
+  border: 1px solid var(--accent);
+  border-radius: var(--radius-md);
+  padding: 20px 24px;
+  box-shadow: 0 10px 25px rgba(99, 102, 241, 0.15);
+  position: relative;
+  overflow: hidden;
+}
+

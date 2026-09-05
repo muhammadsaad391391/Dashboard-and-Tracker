@@ -126,11 +126,14 @@ export function getProjectDetailsContentHTML(proj, state) {
 }
 
 export function renderProjects(container, state) {
-  // 1. Calculate Priority Scores & Health for all projects
+  // 1. Calculate Priority Scores & Health for all projects with Cadence Boost
   const activeDate = state.getActiveDate();
   const today = new Date(activeDate + 'T00:00:00');
   
   const processedProjects = state.projects.map(proj => {
+    // Cadence & Recurrence evaluation
+    const cadence = state.getProjectCadenceInfo(proj, activeDate);
+
     // A. Urgency score calculation
     let urgency = 20; // Default low urgency for no deadline
     let daysRemaining = 999;
@@ -192,14 +195,19 @@ export function renderProjects(container, state) {
     else if (proj.priority === 'medium') importance = 50;
     else if (proj.priority === 'low') importance = 25;
     
-    // E. Priority Score Formula (0-100)
+    // E. Priority Score Formula with Cadence Boost (0-100)
+    const cadenceBoost = cadence.urgencyBoost || 0;
     let priorityScore = Math.round(
-      (urgency * 0.30) +
-      (importance * 0.25) +
-      (deadlineRisk * 0.20) +
-      (neglectFactor * 0.15) +
-      (10) // base baseline
+      (urgency * 0.25) +
+      (importance * 0.20) +
+      (cadenceBoost * 0.25) +
+      (deadlineRisk * 0.15) +
+      (neglectFactor * 0.15)
     );
+    // If completed for this cadence cycle, gently demote in queue
+    if (cadence.isCompleted) {
+      priorityScore = Math.max(5, priorityScore - 40);
+    }
     priorityScore = Math.min(100, Math.max(0, priorityScore));
     
     // F. Progress Percentage
@@ -211,12 +219,17 @@ export function renderProjects(container, state) {
     if (proj.isDailyAllocation) {
       const stats = getDailyAllocationStats(proj, state);
       progress = stats.percent;
-    } else {
+    } else if (totalSub > 0) {
       progress = subtaskProgress;
+    } else if (cadence.isCompleted) {
+      progress = 100;
+    } else {
+      progress = 0;
     }
     
     return {
       ...proj,
+      cadence,
       daysRemaining,
       deadlineRisk,
       neglectDays,
@@ -231,103 +244,218 @@ export function renderProjects(container, state) {
   // Sort projects by priority score descending
   processedProjects.sort((a, b) => b.priorityScore - a.priorityScore);
   
-  // 2. Determine "What Should I Do Now?" recommended task
+  // 2. Determine "⚡ What To Do Next" recommended action
   let recommendedTask = null;
   let recommendedProject = null;
+  let recommendationReason = '';
   
   for (const proj of processedProjects) {
     if (proj.status === 'Completed' || proj.status === 'Paused') continue;
-    if (proj.isDailyAllocation) {
-      const stats = getDailyAllocationStats(proj, state);
-      if (stats.percent < 100) {
-        recommendedTask = {
-          id: 'daily-alloc-' + proj.id,
-          name: 'General Work Block (Daily Goal)',
-          estimatedMinutes: 60,
-          completed: false
-        };
-        recommendedProject = proj;
-        break;
+    if (proj.cadence && proj.cadence.isCompleted) continue; // Already completed in current period
+
+    const sessionDuration = proj.durationPerSessionMinutes || proj.dailyAllocationMinutes || 60;
+
+    if (proj.subtasks && proj.subtasks.some(s => !s.completed)) {
+      const nextTask = proj.subtasks.find(s => !s.completed);
+      recommendedTask = nextTask;
+      recommendedProject = proj;
+      if (proj.cadence && proj.cadence.isDue) {
+        recommendationReason = `Due today • ${proj.cadence.label} cadence`;
+      } else if (proj.deadline && proj.daysRemaining <= 3) {
+        recommendationReason = `Urgent milestone due in ${proj.daysRemaining} day${proj.daysRemaining === 1 ? '' : 's'}`;
+      } else {
+        recommendationReason = `Top priority queue item (${proj.priorityScore} priority)`;
       }
+      break;
     } else {
-      const nextIncompleteTask = proj.subtasks ? proj.subtasks.find(s => !s.completed) : null;
-      if (nextIncompleteTask) {
-        recommendedTask = nextIncompleteTask;
-        recommendedProject = proj;
-        break;
+      // Focus session block for daily, periodic, or flexible project without subtasks
+      recommendedTask = {
+        id: 'session-' + proj.id,
+        name: `${proj.name}: Focus Session`,
+        estimatedMinutes: sessionDuration,
+        completed: false
+      };
+      recommendedProject = proj;
+      if (proj.cadence && proj.cadence.isDue) {
+        recommendationReason = `Due today • ${proj.cadence.label} commitment`;
+      } else {
+        recommendationReason = `High priority project focus session`;
       }
+      break;
     }
   }
 
-  // 3. Available Time Today Scheduler Logic
-  const timeMapping = { '30m': 30, '1h': 60, '2h': 120, '3h': 180, '4h': 240 };
-  const maxMinutes = timeMapping[state.availableTimeToday] || 120;
-  
+  // 3. Daily Available Time vs Doables Calculator
+  const capacity = state.calculateDailyTimeCapacity(activeDate);
+  const totalMinutes = capacity.totalCapacityMinutes || (16 * 60);
+  const doablesPct = Math.min(100, Math.round((capacity.doablesMinutes / totalMinutes) * 100));
+  const scheduledPct = Math.min(100 - doablesPct, Math.round((capacity.scheduledMinutes / totalMinutes) * 100));
+  const freePct = Math.max(0, 100 - doablesPct - scheduledPct);
+
+  // Build smart list of tasks that fit inside remaining free time
+  const remainingFreeMins = Math.max(0, capacity.remainingFreeMinutes);
   let allocatedMinutes = 0;
   const recommendedTodayList = [];
   
-  processedProjects.forEach(proj => {
-    if (proj.status === 'Completed' || proj.status === 'Paused') return;
-    if (proj.subtasks) {
-      proj.subtasks.forEach(task => {
-        if (!task.completed) {
-          const est = task.estimatedMinutes || 30;
-          if (allocatedMinutes + est <= maxMinutes) {
-            allocatedMinutes += est;
-            recommendedTodayList.push({
-              project: proj,
-              task: task,
-              estimate: est
-            });
-          }
+  for (const proj of processedProjects) {
+    if (proj.status === 'Completed' || proj.status === 'Paused') continue;
+    if (proj.cadence && proj.cadence.isCompleted) continue;
+
+    const uncompleted = proj.subtasks ? proj.subtasks.filter(s => !s.completed) : [];
+    if (uncompleted.length > 0) {
+      for (const task of uncompleted) {
+        const est = task.estimatedMinutes || 30;
+        if (allocatedMinutes + est <= remainingFreeMins) {
+          allocatedMinutes += est;
+          recommendedTodayList.push({
+            project: proj,
+            task: task,
+            estimate: est
+          });
         }
-      });
+      }
+    } else {
+      const sessionMins = proj.durationPerSessionMinutes || proj.dailyAllocationMinutes || 60;
+      if (allocatedMinutes + sessionMins <= remainingFreeMins) {
+        allocatedMinutes += sessionMins;
+        recommendedTodayList.push({
+          project: proj,
+          task: {
+            id: 'session-' + proj.id,
+            name: `${proj.name}: Focus Session`,
+            estimatedMinutes: sessionMins,
+            completed: false
+          },
+          estimate: sessionMins
+        });
+      }
     }
-  });
+  }
 
   // Render Page Layout
   container.innerHTML = `
     <div style="display:flex; flex-direction:column; gap:24px;">
       
-
+      <!-- ⚡ Top Hero: What To Do Next & Priority Engine -->
+      <div class="hero-next-action-card">
+        <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:16px;">
+          <div style="display:flex; flex-direction:column; gap:6px; max-width:680px;">
+            <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
+              <span style="font-size:11px; font-weight:800; letter-spacing:0.08em; text-transform:uppercase; color:var(--accent); display:flex; align-items:center; gap:4px;">
+                ⚡ WHAT TO DO NEXT • PRIORITY ENGINE
+              </span>
+              ${recommendedProject ? `
+                <span class="cadence-badge ${recommendedProject.cadence.badgeClass}">${recommendedProject.cadence.label}</span>
+                <span class="cadence-status-pill ${recommendedProject.cadence.isDue ? 'due-today' : 'on-track'}">${recommendedProject.cadence.statusText}</span>
+              ` : ''}
+            </div>
+            ${recommendedTask ? `
+              <h2 style="font-size:20px; font-weight:900; color:var(--text-primary); margin:0; line-height:1.3;">
+                ${recommendedTask.name}
+              </h2>
+              <div style="display:flex; align-items:center; gap:10px; font-size:13px; color:var(--text-secondary); flex-wrap:wrap;">
+                <span>Project: <strong style="color:var(--text-primary);">${recommendedProject.name}</strong></span>
+                <span>•</span>
+                <span style="color:var(--accent); font-weight:700; font-family:var(--font-mono);">Priority Score: ${recommendedProject.priorityScore}/100</span>
+                <span>•</span>
+                <span style="font-family:var(--font-mono); background:var(--bg-secondary); padding:2px 8px; border-radius:4px; font-size:11px; font-weight:700; color:var(--text-primary);">⏱ ~${recommendedTask.estimatedMinutes || 45} mins</span>
+                <span>•</span>
+                <span style="font-style:italic; font-size:12px; color:var(--text-secondary);">${recommendationReason}</span>
+              </div>
+            ` : `
+              <h2 style="font-size:18px; font-weight:800; color:var(--text-primary); margin:0;">
+                🎉 All Priority Commitments Completed For Today!
+              </h2>
+              <p style="font-size:13px; color:var(--text-secondary); margin:0;">
+                All daily routines, due cadences, and urgent milestones are on track. Add a new task below or enjoy your free time!
+              </p>
+            `}
+          </div>
+          ${recommendedTask ? `
+            <div style="display:flex; gap:10px; align-items:center;">
+              <button class="btn btn-primary" id="hero-schedule-next-btn" data-proj-id="${recommendedProject.id}" data-task-name="${recommendedTask.name}" data-task-est="${recommendedTask.estimatedMinutes || 45}" data-proj-type="${recommendedProject.type || 'general'}" style="height:42px; padding:0 22px; font-size:13px; font-weight:800; box-shadow:0 4px 14px rgba(99, 102, 241, 0.4); display:flex; align-items:center; gap:8px;">
+                <span>⚡</span> Schedule Right Now
+              </button>
+            </div>
+          ` : ''}
+        </div>
+      </div>
 
       <div style="display:grid; grid-template-columns: 2fr 1fr; gap:24px; align-items: start;" class="projects-grid">
         
         <!-- Left Column: Priority Trackers -->
         <div style="display:flex; flex-direction:column; gap:24px;">
           
-
-
-          <!-- Daily Available Time Planner Card -->
+          <!-- Daily Available Time vs Doables Calculator Card -->
           <div class="card">
-            <div class="card-title" style="display:flex; justify-content:space-between; align-items:center;">
-              <span>📅 Available Time Today Planner</span>
-              <select class="premium-select" id="available-time-select" style="width:120px; height:28px; font-size:12px; padding:2px 6px;">
-                <option value="30m" ${state.availableTimeToday === '30m' ? 'selected' : ''}>30 Mins</option>
-                <option value="1h" ${state.availableTimeToday === '1h' ? 'selected' : ''}>1 Hour</option>
-                <option value="2h" ${state.availableTimeToday === '2h' ? 'selected' : ''}>2 Hours</option>
-                <option value="3h" ${state.availableTimeToday === '3h' ? 'selected' : ''}>3 Hours</option>
-                <option value="4h" ${state.availableTimeToday === '4h' ? 'selected' : ''}>4 Hours</option>
-              </select>
+            <div class="card-title" style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px;">
+              <div style="display:flex; align-items:center; gap:8px;">
+                <span>⚖️ Daily Time Capacity vs Doables</span>
+                <span style="font-size:11px; font-weight:600; color:var(--text-secondary);">(${activeDate})</span>
+              </div>
+              <span style="font-size:11px; font-weight:700; color:var(--accent); font-family:var(--font-mono);">
+                ${capacity.freeSlotsCount} free slot${capacity.freeSlotsCount === 1 ? '' : 's'} (${capacity.remainingFreeHours}h free)
+              </span>
             </div>
-            <p style="font-size:12px; color:var(--text-secondary); margin-bottom:16px;">
-              The system calculates a custom task list that fits exactly inside your available capacity today.
-            </p>
-            
-            <div style="display:flex; flex-direction:column; gap:8px;" id="focus-plan-list-area">
-              ${recommendedTodayList.length === 0 ? `
-                <div class="cell-empty" style="text-align:center; padding:16px 0;">No tasks fit in this time frame or all tasks completed!</div>
-              ` : recommendedTodayList.map(item => `
-                <div style="display:flex; align-items:center; justify-content:space-between; background-color:var(--bg-tertiary); padding:10px 14px; border:1px solid var(--border-color); border-radius:var(--radius-sm);">
-                  <div style="display:flex; flex-direction:column; min-width:0;">
-                    <span style="font-size:13px; font-weight:700; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${item.task.name}</span>
-                    <span style="font-size:11px; color:var(--text-muted);">Project: ${item.project.name} (${item.project.priorityScore} Priority)</span>
-                  </div>
-                  <span style="font-size:11px; font-family:var(--font-mono); font-weight:700; color:var(--accent); background:var(--bg-secondary); padding:2px 8px; border-radius:4px; white-space:nowrap;">
-                    ~${item.estimate} min
-                  </span>
+
+            <!-- Visual Segmented Capacity Progress Bar -->
+            <div style="margin: 12px 0 8px 0;">
+              <div class="capacity-progress-bar">
+                <div class="capacity-seg-doables" style="width: ${doablesPct}%;" title="Committed Doables: ${capacity.doablesHours}h (${doablesPct}%)"></div>
+                <div class="capacity-seg-scheduled" style="width: ${scheduledPct}%;" title="Scheduled in Calendar: ${capacity.scheduledHours}h (${scheduledPct}%)"></div>
+                <div class="capacity-seg-free" style="width: ${freePct}%;" title="Remaining Free Time: ${capacity.remainingFreeHours}h (${freePct}%)"></div>
+              </div>
+              <!-- Legend & Breakdown -->
+              <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px; margin-top:8px; font-size:11px;">
+                <div style="display:flex; align-items:center; gap:6px;">
+                  <span style="width:10px; height:10px; border-radius:3px; background:#6366f1; display:inline-block;"></span>
+                  <span><strong>Doables:</strong> ${capacity.doablesHours}h (${capacity.doablesMinutes}m)</span>
                 </div>
-              `).join('')}
+                <div style="display:flex; align-items:center; gap:6px;">
+                  <span style="width:10px; height:10px; border-radius:3px; background:#3b82f6; display:inline-block;"></span>
+                  <span><strong>Scheduled:</strong> ${capacity.scheduledHours}h (${capacity.scheduledCount} task${capacity.scheduledCount === 1 ? '' : 's'})</span>
+                </div>
+                <div style="display:flex; align-items:center; gap:6px;">
+                  <span style="width:10px; height:10px; border-radius:3px; background:#10b981; display:inline-block;"></span>
+                  <span><strong>Free Time Left:</strong> <strong style="color:var(--success); font-family:var(--font-mono);">${capacity.remainingFreeHours}h</strong></span>
+                </div>
+              </div>
+            </div>
+
+            <hr style="border:0; border-top:1px solid var(--border-color); margin:14px 0 12px 0;">
+
+            <!-- Priority Queue Fitting inside Free Time -->
+            <div>
+              <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
+                <span style="font-size:12px; font-weight:800; text-transform:uppercase; letter-spacing:0.05em; color:var(--text-secondary);">
+                  🎯 Recommended Tasks To Fill Remaining Free Time (${allocatedMinutes}m / ${remainingFreeMins}m)
+                </span>
+              </div>
+              <div style="display:flex; flex-direction:column; gap:8px;" id="focus-plan-list-area">
+                ${recommendedTodayList.length === 0 ? `
+                  <div class="cell-empty" style="text-align:center; padding:16px 0; color:var(--text-muted); font-size:12px;">
+                    ${remainingFreeMins <= 0 ? 'Your schedule is full for today! No free slots remaining.' : 'All pending tasks completed or scheduled! 🎉'}
+                  </div>
+                ` : recommendedTodayList.map(item => `
+                  <div style="display:flex; align-items:center; justify-content:space-between; background-color:var(--bg-tertiary); padding:8px 12px; border:1px solid var(--border-color); border-radius:var(--radius-sm); gap:12px;">
+                    <div style="display:flex; flex-direction:column; min-width:0; flex:1;">
+                      <div style="display:flex; align-items:center; gap:6px;">
+                        <span style="font-size:13px; font-weight:700; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; color:var(--text-primary);">${item.task.name}</span>
+                        <span class="cadence-badge ${item.project.cadence.badgeClass}" style="font-size:9px; padding:1px 6px;">${item.project.cadence.label}</span>
+                      </div>
+                      <span style="font-size:11px; color:var(--text-muted);">${item.project.name} • <span style="color:var(--accent); font-weight:600;">${item.project.priorityScore} Priority</span></span>
+                    </div>
+                    <div style="display:flex; align-items:center; gap:8px; flex-shrink:0;">
+                      <span style="font-size:11px; font-family:var(--font-mono); font-weight:700; color:var(--accent); background:var(--bg-secondary); padding:2px 8px; border-radius:4px; white-space:nowrap;">
+                        ~${item.estimate} min
+                      </span>
+                      <button class="btn btn-primary btn-sm quick-schedule-task-btn" data-proj-id="${item.project.id}" data-task-name="${item.task.name}" data-task-est="${item.estimate}" data-proj-type="${item.project.type || 'general'}" style="height:26px; padding:0 8px; font-size:11px; font-weight:700;">
+                        ⚡ Schedule
+                      </button>
+                    </div>
+                  </div>
+                `).join('')}
+              </div>
             </div>
           </div>
 
@@ -354,22 +482,24 @@ export function renderProjects(container, state) {
             
             <!-- Desktop Table View -->
             <div class="desktop-only-table-wrapper" style="overflow-x:auto;">
-              <table style="width:100%; border-collapse:collapse; min-width:600px;" class="spreadsheet-table">
+              <table style="width:100%; border-collapse:collapse; min-width:650px;" class="spreadsheet-table">
                 <thead>
                   <tr style="border-bottom:2px solid var(--border-color); text-align:left;">
                     <th style="padding:10px; font-size:12px; font-weight:700;">Project</th>
-                    <th style="padding:10px; font-size:12px; font-weight:700;">Priority Score</th>
+                    <th style="padding:10px; font-size:12px; font-weight:700;">Cadence</th>
+                    <th style="padding:10px; font-size:12px; font-weight:700;">Priority</th>
                     <th style="padding:10px; font-size:12px; font-weight:700;">Progress</th>
                     <th style="padding:10px; font-size:12px; font-weight:700;">Deadline</th>
-                    <th style="padding:10px; font-size:12px; font-weight:700;">Pace Status</th>
+                    <th style="padding:10px; font-size:12px; font-weight:700;">Status</th>
                     <th style="padding:10px; font-size:12px; font-weight:700; text-align:right;">Actions</th>
                   </tr>
                 </thead>
                 <tbody>
                   ${processedProjects.length === 0 ? `
-                    <tr><td colspan="6" style="text-align:center; padding:20px; color:var(--text-muted);">No projects created yet. Form below!</td></tr>
+                    <tr><td colspan="7" style="text-align:center; padding:20px; color:var(--text-muted);">No projects created yet. Use form below to add your first project!</td></tr>
                   ` : processedProjects.map(proj => {
                     const priorityClass = proj.priority === 'critical' ? 'badge-danger' : proj.priority === 'high' ? 'badge-warning' : 'badge-info';
+                    const cadencePillClass = proj.cadence.isDue ? 'due-today' : proj.cadence.isCompleted ? 'done-today' : 'on-track';
                     return `
                       <tr style="border-bottom:1px solid var(--border-color);" data-proj-row-id="${proj.id}" data-proj-type="${proj.type || 'flexible'}">
                         <td style="padding:12px 10px;">
@@ -379,12 +509,18 @@ export function renderProjects(container, state) {
                           </div>
                         </td>
                         <td style="padding:12px 10px;">
+                          <div style="display:flex; flex-direction:column; gap:4px; align-items:flex-start;">
+                            <span class="cadence-badge ${proj.cadence.badgeClass}">${proj.cadence.label}</span>
+                            <span class="cadence-status-pill ${cadencePillClass}">${proj.cadence.statusText}</span>
+                          </div>
+                        </td>
+                        <td style="padding:12px 10px;">
                           <div style="display:flex; align-items:center; gap:8px;">
                             <span style="font-family:var(--font-mono); font-weight:700; font-size:14px; color:var(--accent);">${proj.priorityScore}</span>
                             <span class="badge ${priorityClass}" style="font-size:9px; text-transform:uppercase;">${proj.priority}</span>
                           </div>
                         </td>
-                        <td style="padding:12px 10px; width:150px;">
+                        <td style="padding:12px 10px; width:130px;">
                           <div style="display:flex; align-items:center; gap:8px;">
                             <div style="flex:1; height:6px; background-color:var(--bg-tertiary); border-radius:3px; overflow:hidden;">
                               <div style="width:${proj.progress}%; height:100%; background:var(--accent-gradient);"></div>
@@ -395,7 +531,7 @@ export function renderProjects(container, state) {
                         <td style="padding:12px 10px; font-size:12px;">
                           ${proj.deadline ? `
                             <span style="font-weight:600;">${proj.deadline}</span><br>
-                            <span style="font-size:10px; color:var(--text-muted);">${proj.daysRemaining} days left</span>
+                            <span style="font-size:10px; color:var(--text-muted);">${proj.daysRemaining}d left</span>
                           ` : '<span style="color:var(--text-muted);">None</span>'}
                         </td>
                         <td style="padding:12px 10px;">
@@ -418,7 +554,7 @@ export function renderProjects(container, state) {
                       
                       <!-- Collapsible subtasks panel -->
                       <tr id="proj-details-pane-${proj.id}" style="display:none; background-color:rgba(255,255,255,0.01);">
-                        <td colspan="6" style="padding:16px; border-bottom:1px solid var(--border-color);">
+                        <td colspan="7" style="padding:16px; border-bottom:1px solid var(--border-color);">
                           ${getProjectDetailsContentHTML(proj, state)}
                         </td>
                       </tr>
@@ -431,20 +567,24 @@ export function renderProjects(container, state) {
             <!-- Mobile Card View -->
             <div class="mobile-only-project-list" style="display:none; flex-direction:column; gap:16px;">
               ${processedProjects.length === 0 ? `
-                <div class="cell-empty" style="text-align:center; padding:20px; color:var(--text-muted);">No projects created yet. Form below!</div>
+                <div class="cell-empty" style="text-align:center; padding:20px; color:var(--text-muted);">No projects created yet. Use form below!</div>
               ` : processedProjects.map(proj => {
                 const priorityClass = proj.priority === 'critical' ? 'badge-danger' : proj.priority === 'high' ? 'badge-warning' : 'badge-info';
+                const cadencePillClass = proj.cadence.isDue ? 'due-today' : proj.cadence.isCompleted ? 'done-today' : 'on-track';
                 return `
                   <div class="project-mobile-card" style="background:var(--bg-secondary); border:1px solid var(--border-color); border-radius:var(--radius-md); padding:16px; display:flex; flex-direction:column; gap:12px;" data-proj-row-id="${proj.id}" data-proj-type="${proj.type || 'flexible'}">
                     <div style="display:flex; justify-content:space-between; align-items:flex-start; gap:8px;">
                       <div style="min-width:0; flex:1;">
-                        <span style="font-weight:800; font-size:15px; color:var(--text-primary); display:block; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${proj.name}</span>
-                        <span style="font-size:11px; color:var(--text-secondary); display:block; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; margin-top:2px;">${proj.goal || 'No goal set'}</span>
+                        <div style="display:flex; align-items:center; gap:6px; flex-wrap:wrap; margin-bottom:4px;">
+                          <span style="font-weight:800; font-size:15px; color:var(--text-primary);">${proj.name}</span>
+                          <span class="cadence-badge ${proj.cadence.badgeClass}">${proj.cadence.label}</span>
+                        </div>
+                        <span style="font-size:11px; color:var(--text-secondary); display:block; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${proj.goal || 'No goal set'}</span>
                       </div>
-                      <span class="badge ${proj.paceClass}" style="font-size:10px; flex-shrink:0;">${proj.paceStatus}</span>
+                      <span class="cadence-status-pill ${cadencePillClass}">${proj.cadence.statusText}</span>
                     </div>
 
-                    <div style="display:flex; justify-content:space-between; align-items:center; gap:16px; flex-wrap:wrap; font-size:12px; border-top:1px solid var(--border-color); border-bottom:1px solid var(--border-color); padding:8px 0;">
+                    <div style="display:flex; justify-content:space-between; align-items:center; gap:12px; flex-wrap:wrap; font-size:12px; border-top:1px solid var(--border-color); border-bottom:1px solid var(--border-color); padding:8px 0;">
                       <div style="display:flex; align-items:center; gap:6px;">
                         <span style="font-weight:700; color:var(--text-secondary);">Score:</span>
                         <span style="font-family:var(--font-mono); font-weight:800; color:var(--accent);">${proj.priorityScore}</span>
@@ -456,6 +596,7 @@ export function renderProjects(container, state) {
                           <span style="font-size:10px; color:var(--text-secondary);">(${proj.daysRemaining}d left)</span>
                         ` : '<span style="color:var(--text-muted);">No deadline</span>'}
                       </div>
+                      <span class="badge ${proj.paceClass}" style="font-size:10px;">${proj.paceStatus}</span>
                     </div>
 
                     <div>
@@ -494,12 +635,12 @@ export function renderProjects(container, state) {
 
           <!-- Add Project Form -->
           <div class="card">
-            <div class="card-title">➕ Add New Project</div>
+            <div class="card-title">➕ Add New Project / Cadence Goal</div>
             <div style="display:flex; flex-direction:column; gap:12px;">
               <div style="display:grid; grid-template-columns: 2fr 1fr 1fr; gap:12px;" class="project-form-grid">
                 <div style="display:flex; flex-direction:column; gap:4px;">
                   <label style="font-size:11px; font-weight:700; color:var(--text-secondary);">Project Name</label>
-                  <input type="text" id="new-proj-name" class="premium-input" placeholder="E.g. Etsy Crochet Shop" style="height:32px; padding:4px 8px;">
+                  <input type="text" id="new-proj-name" class="premium-input" placeholder="E.g. Daily Quran Revision, Etsy Audit" style="height:32px; padding:4px 8px;">
                 </div>
                 <div style="display:flex; flex-direction:column; gap:4px;">
                   <label style="font-size:11px; font-weight:700; color:var(--text-secondary);">Manual Priority</label>
@@ -516,6 +657,7 @@ export function renderProjects(container, state) {
                     <option value="flexible">Flexible / General</option>
                     <option value="study">Study Planner</option>
                     <option value="etsy_seo">Etsy + SEO</option>
+                    <option value="quran">Quran Hifz</option>
                     ${state.customSections.map(sec => `
                       <option value="${sec.type}">${sec.label}</option>
                     `).join('')}
@@ -523,13 +665,42 @@ export function renderProjects(container, state) {
                 </div>
               </div>
 
+              <!-- Cadence / Recurrence & Session Duration Controls -->
+              <div style="display:grid; grid-template-columns: 1fr 1fr; gap:12px; background:var(--bg-tertiary); padding:12px; border-radius:var(--radius-sm); border:1px solid var(--border-color);" class="project-form-grid">
+                <div style="display:flex; flex-direction:column; gap:4px;">
+                  <label style="font-size:11px; font-weight:700; color:var(--text-primary); display:flex; align-items:center; gap:6px;">
+                    <span>🔁 Cadence / Recurrence</span>
+                    <span style="font-size:10px; color:var(--accent); font-weight:600;">(Key Feature)</span>
+                  </label>
+                  <select id="new-proj-cadence" class="premium-select" style="height:32px; padding:4px 8px;">
+                    <option value="flexible" selected>Flexible / Milestone (As needed)</option>
+                    <option value="daily">Daily (Must do every single day)</option>
+                    <option value="every_2_days">Every 2 Days (Alternate days)</option>
+                    <option value="every_3_days">Every 3 Days (Twice a week)</option>
+                    <option value="weekly">Weekly (Once a week)</option>
+                  </select>
+                  <span style="font-size:10px; color:var(--text-muted);" id="cadence-helper-text">Milestone roadmap based on deadline and tasks.</span>
+                </div>
+                <div style="display:flex; flex-direction:column; gap:4px;">
+                  <label style="font-size:11px; font-weight:700; color:var(--text-primary);">⏱ Session Duration (per session)</label>
+                  <select id="new-proj-session-duration" class="premium-select" style="height:32px; padding:4px 8px;">
+                    <option value="30">30 minutes</option>
+                    <option value="45">45 minutes</option>
+                    <option value="60" selected>60 minutes (1 hour)</option>
+                    <option value="90">90 minutes (1.5 hours)</option>
+                    <option value="120">120 minutes (2 hours)</option>
+                  </select>
+                  <span style="font-size:10px; color:var(--text-muted);">Allocated to your daily doable capacity.</span>
+                </div>
+              </div>
+
               <div style="display:grid; grid-template-columns: repeat(3, 1fr); gap:12px;" class="project-form-grid">
                 <div style="display:flex; flex-direction:column; gap:4px;">
-                  <label style="font-size:11px; font-weight:700; color:var(--text-secondary);">Deadline Date</label>
+                  <label style="font-size:11px; font-weight:700; color:var(--text-secondary);">Deadline Date (Optional)</label>
                   <input type="date" id="new-proj-deadline" class="premium-input" style="height:32px; padding:4px 8px;">
                 </div>
                 <div style="display:flex; flex-direction:column; gap:4px;">
-                  <label style="font-size:11px; font-weight:700; color:var(--text-secondary);">Est. Hours Left</label>
+                  <label style="font-size:11px; font-weight:700; color:var(--text-secondary);">Est. Total Hours Left</label>
                   <input type="number" id="new-proj-hours" class="premium-input" placeholder="E.g. 20" style="height:32px; padding:4px 8px;">
                 </div>
                 <div style="display:flex; flex-direction:column; gap:4px;">
@@ -545,22 +716,12 @@ export function renderProjects(container, state) {
 
               <div style="display:flex; flex-direction:column; gap:4px;">
                 <label style="font-size:11px; font-weight:700; color:var(--text-secondary);">Next Milestone</label>
-                <input type="text" id="new-proj-nextgoal" class="premium-input" placeholder="E.g. Publish Halloween listings" style="height:32px; padding:4px 8px;">
+                <input type="text" id="new-proj-nextgoal" class="premium-input" placeholder="E.g. Memorize Surah Al-Mulk / Launch 5 products" style="height:32px; padding:4px 8px;">
               </div>
 
-               <div style="display:flex; flex-direction:column; gap:4px;" id="new-proj-subtasks-wrapper">
-                <label style="font-size:11px; font-weight:700; color:var(--text-secondary);">Initial Tasks list (comma separated)</label>
+              <div style="display:flex; flex-direction:column; gap:4px;" id="new-proj-subtasks-wrapper">
+                <label style="font-size:11px; font-weight:700; color:var(--text-secondary);">Initial Tasks list (comma separated, optional)</label>
                 <input type="text" id="new-proj-subtasks" class="premium-input" placeholder="Task 1, Task 2, Task 3..." style="height:32px; padding:4px 8px;">
-              </div>
-
-              <div style="display:flex; align-items:center; gap:8px; margin-top:4px;">
-                <input type="checkbox" id="new-proj-is-daily-alloc" style="width:16px; height:16px; cursor:pointer;">
-                <label for="new-proj-is-daily-alloc" style="font-size:12px; font-weight:700; color:var(--text-secondary); cursor:pointer;">Fixed Daily Time Allocation (no fixed tasks)</label>
-              </div>
-              
-              <div id="new-proj-daily-alloc-wrapper" style="display:none; flex-direction:column; gap:4px; margin-left:24px;">
-                <label style="font-size:11px; font-weight:700; color:var(--text-secondary);">Target Daily Allocation (minutes)</label>
-                <input type="number" id="new-proj-daily-minutes" class="premium-input" value="60" placeholder="E.g. 60 for 1 hr" style="height:32px; width:120px; padding:4px 8px;">
               </div>
 
               <button class="btn btn-primary" id="save-new-proj-btn" style="height:36px; font-weight:700; justify-content:center; margin-top:8px;">
@@ -613,18 +774,88 @@ export function renderProjects(container, state) {
 }
 
 function bindProjectsEvents(container, state, processedProjects) {
+  // 1-Tap Scheduling Helper into the first free slot on today's calendar
+  const scheduleTaskInFirstFreeSlot = async (proj, taskName, estimatedMinutes, type) => {
+    const activeDate = state.getActiveDate();
+    const day = state.days.find(d => d.date === activeDate);
+    if (!day) return;
 
+    const firstFreeSlot = state.timeIntervals.find(slot => !day.schedule.some(t => t.plannedTime === slot));
+    if (!firstFreeSlot) {
+      alert("No free time slots available on your schedule for today! Please free up or reschedule a slot in Daily Planner.");
+      return;
+    }
 
-  // B. Available Time select dropdown
-  const timeSelect = container.querySelector('#available-time-select');
-  if (timeSelect) {
-    timeSelect.addEventListener('change', async () => {
-      await state.saveAvailableTimeToday(timeSelect.value);
-      renderProjects(container, state);
+    const formattedTaskName = taskName.includes(proj.name) ? taskName : `${proj.name}: ${taskName}`;
+    const newTask = {
+      id: 't-' + Date.now() + Math.random().toString(36).substring(7),
+      name: formattedTaskName,
+      plannedTime: firstFreeSlot,
+      status: 'pending',
+      missedReason: '',
+      actualTime: '',
+      type: type || proj.type || 'general'
+    };
+
+    day.schedule.push(newTask);
+    day.schedule.sort((a, b) => {
+      const idxA = state.timeIntervals.indexOf(a.plannedTime);
+      const idxB = state.timeIntervals.indexOf(b.plannedTime);
+      return idxA - idxB;
+    });
+
+    await state.updateDay(day.date, { schedule: day.schedule });
+    await state.updateProject(proj.id, { lastWorkedOn: Date.now() });
+
+    confetti({ particleCount: 50, spread: 45 });
+    showToast(`⚡ Scheduled "${formattedTaskName}" for ${firstFreeSlot} today!`);
+    renderProjects(container, state);
+  };
+
+  // Hero Schedule Next Action Button
+  const heroScheduleBtn = container.querySelector('#hero-schedule-next-btn');
+  if (heroScheduleBtn) {
+    heroScheduleBtn.addEventListener('click', async () => {
+      const projId = Number(heroScheduleBtn.getAttribute('data-proj-id'));
+      const taskName = heroScheduleBtn.getAttribute('data-task-name');
+      const est = Number(heroScheduleBtn.getAttribute('data-task-est')) || 45;
+      const type = heroScheduleBtn.getAttribute('data-proj-type') || 'general';
+      const proj = state.projects.find(p => p.id === projId);
+      if (proj) {
+        await scheduleTaskInFirstFreeSlot(proj, taskName, est, type);
+      }
     });
   }
 
+  // Quick Schedule buttons in Time Capacity Planner
+  container.querySelectorAll('.quick-schedule-task-btn').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      const projId = Number(btn.getAttribute('data-proj-id'));
+      const taskName = btn.getAttribute('data-task-name');
+      const est = Number(btn.getAttribute('data-task-est')) || 45;
+      const type = btn.getAttribute('data-proj-type') || 'general';
+      const proj = state.projects.find(p => p.id === projId);
+      if (proj) {
+        await scheduleTaskInFirstFreeSlot(proj, taskName, est, type);
+      }
+    });
+  });
 
+  // Cadence selection helper text in New Project form
+  const cadenceSelect = container.querySelector('#new-proj-cadence');
+  const cadenceHelperText = container.querySelector('#cadence-helper-text');
+  if (cadenceSelect && cadenceHelperText) {
+    const helperMap = {
+      flexible: 'Milestone roadmap based on deadline and tasks.',
+      daily: 'Commitment required every day. Calculated in your daily doable capacity.',
+      every_2_days: 'Alternate days cadence. Urgency automatically peaks if 2+ days have passed.',
+      every_3_days: 'Twice-a-week cadence. Urgency automatically peaks if 3+ days have passed.',
+      weekly: 'Targeted weekly cadence. Urgency automatically peaks towards the end of the week.'
+    };
+    cadenceSelect.addEventListener('change', () => {
+      cadenceHelperText.textContent = helperMap[cadenceSelect.value] || '';
+    });
+  }
 
   // D. Collapsible project details row triggers
   container.querySelectorAll('.toggle-proj-details-btn').forEach(btn => {
@@ -906,22 +1137,6 @@ function bindProjectsEvents(container, state, processedProjects) {
     });
   }
 
-  // Toggle daily allocation fields in New Project form
-  const isDailyAllocCheck = container.querySelector('#new-proj-is-daily-alloc');
-  const dailyAllocWrapper = container.querySelector('#new-proj-daily-alloc-wrapper');
-  const subtasksWrapper = container.querySelector('#new-proj-subtasks-wrapper');
-  if (isDailyAllocCheck) {
-    isDailyAllocCheck.addEventListener('change', () => {
-      if (isDailyAllocCheck.checked) {
-        dailyAllocWrapper.style.display = 'flex';
-        subtasksWrapper.style.display = 'none';
-      } else {
-        dailyAllocWrapper.style.display = 'none';
-        subtasksWrapper.style.display = 'flex';
-      }
-    });
-  }
-
   // I. Save New Project Form
   const saveNewProjBtn = container.querySelector('#save-new-proj-btn');
   if (saveNewProjBtn) {
@@ -929,13 +1144,13 @@ function bindProjectsEvents(container, state, processedProjects) {
       const name = container.querySelector('#new-proj-name').value.trim();
       const priority = container.querySelector('#new-proj-priority').value;
       const type = container.querySelector('#new-proj-type').value;
+      const frequency = cadenceSelect ? cadenceSelect.value : 'flexible';
+      const durationPerSessionMinutes = Number(container.querySelector('#new-proj-session-duration')?.value) || 60;
       const deadline = container.querySelector('#new-proj-deadline').value;
       const hours = Number(container.querySelector('#new-proj-hours').value) || 0;
       const avail = Number(container.querySelector('#new-proj-avail').value) || 0;
       const goal = container.querySelector('#new-proj-goal').value.trim();
       const nextGoal = container.querySelector('#new-proj-nextgoal').value.trim();
-      const isDailyAllocation = isDailyAllocCheck ? isDailyAllocCheck.checked : false;
-      const dailyAllocationMinutes = isDailyAllocation ? (Number(container.querySelector('#new-proj-daily-minutes').value) || 60) : 0;
       const subtaskStr = container.querySelector('#new-proj-subtasks').value.trim();
       
       if (!name) {
@@ -943,7 +1158,7 @@ function bindProjectsEvents(container, state, processedProjects) {
         return;
       }
       
-      const subtasks = isDailyAllocation ? [] : subtaskStr.split(',')
+      const subtasks = subtaskStr ? subtaskStr.split(',')
         .map(t => t.trim())
         .filter(t => t)
         .map(t => ({
@@ -951,24 +1166,28 @@ function bindProjectsEvents(container, state, processedProjects) {
           name: t,
           estimatedMinutes: 30,
           completed: false
-        }));
+        })) : [];
         
       await state.addProject({
         name,
         priority,
         type,
+        frequency,
+        durationPerSessionMinutes,
+        targetSessionsPerWeek: frequency === 'daily' ? 7 : frequency === 'weekly' ? 1 : 3,
         deadline,
         goal,
         nextGoal,
         estimatedHours: hours,
         availableHoursPerDay: avail,
         status: 'In progress',
-        isDailyAllocation,
-        dailyAllocationMinutes,
+        isDailyAllocation: frequency === 'daily',
+        dailyAllocationMinutes: durationPerSessionMinutes,
         subtasks
       });
       
       confetti({ particleCount: 50, spread: 30 });
+      showToast(`Project "${name}" created successfully`);
       renderProjects(container, state);
     });
   }
@@ -1281,6 +1500,30 @@ export function showEditProjectModal(projId, state, container) {
           </div>
         </div>
 
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px; background: var(--bg-tertiary); padding: 10px; border-radius: var(--radius-sm); border: 1px solid var(--border-color);">
+          <div>
+            <label style="font-size: 11px; font-weight: 700; color: var(--text-primary); text-transform: uppercase; display: block; margin-bottom: 4px;">🔁 Cadence / Recurrence</label>
+            <select id="modal-edit-proj-cadence" class="premium-select" style="width: 100%; height: 32px; font-size: 12px;">
+              <option value="flexible" ${(!project.frequency || project.frequency === 'flexible') ? 'selected' : ''}>Flexible / Milestone</option>
+              <option value="daily" ${project.frequency === 'daily' ? 'selected' : ''}>Daily (Every day)</option>
+              <option value="every_2_days" ${project.frequency === 'every_2_days' ? 'selected' : ''}>Every 2 Days (Alternate)</option>
+              <option value="every_3_days" ${project.frequency === 'every_3_days' ? 'selected' : ''}>Every 3 Days (Twice/wk)</option>
+              <option value="weekly" ${project.frequency === 'weekly' ? 'selected' : ''}>Weekly (Once/wk)</option>
+            </select>
+          </div>
+
+          <div>
+            <label style="font-size: 11px; font-weight: 700; color: var(--text-primary); text-transform: uppercase; display: block; margin-bottom: 4px;">⏱ Session Duration</label>
+            <select id="modal-edit-proj-duration" class="premium-select" style="width: 100%; height: 32px; font-size: 12px;">
+              <option value="30" ${(project.durationPerSessionMinutes === 30 || project.dailyAllocationMinutes === 30) ? 'selected' : ''}>30 mins</option>
+              <option value="45" ${(project.durationPerSessionMinutes === 45 || project.dailyAllocationMinutes === 45) ? 'selected' : ''}>45 mins</option>
+              <option value="60" ${(!project.durationPerSessionMinutes || project.durationPerSessionMinutes === 60 || project.dailyAllocationMinutes === 60) ? 'selected' : ''}>60 mins (1 hr)</option>
+              <option value="90" ${(project.durationPerSessionMinutes === 90 || project.dailyAllocationMinutes === 90) ? 'selected' : ''}>90 mins (1.5 hr)</option>
+              <option value="120" ${(project.durationPerSessionMinutes === 120 || project.dailyAllocationMinutes === 120) ? 'selected' : ''}>120 mins (2 hr)</option>
+            </select>
+          </div>
+        </div>
+
         <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
           <div>
             <label style="font-size: 11px; font-weight: 700; color: var(--text-secondary); text-transform: uppercase; display: block; margin-bottom: 4px;">Status</label>
@@ -1359,10 +1602,17 @@ export function showEditProjectModal(projId, state, container) {
       return;
     }
 
+    const frequency = backdrop.querySelector('#modal-edit-proj-cadence').value;
+    const durationPerSessionMinutes = Number(backdrop.querySelector('#modal-edit-proj-duration').value) || 60;
+
     const updates = {
       name,
       type: backdrop.querySelector('#modal-edit-proj-type').value,
       priority: backdrop.querySelector('#modal-edit-proj-priority').value,
+      frequency,
+      durationPerSessionMinutes,
+      isDailyAllocation: frequency === 'daily',
+      dailyAllocationMinutes: durationPerSessionMinutes,
       status: backdrop.querySelector('#modal-edit-proj-status').value,
       deadline: backdrop.querySelector('#modal-edit-proj-deadline').value,
       goal: backdrop.querySelector('#modal-edit-proj-goal').value.trim(),

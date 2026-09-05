@@ -827,6 +827,11 @@ class AppState {
       lastWorkedOn: project.lastWorkedOn || Date.now(),
       isDailyAllocation: !!project.isDailyAllocation,
       dailyAllocationMinutes: Number(project.dailyAllocationMinutes) || 0,
+      frequency: project.frequency || (project.isDailyAllocation ? 'daily' : 'flexible'),
+      durationPerSessionMinutes: Number(project.durationPerSessionMinutes) || (project.dailyAllocationMinutes || 60),
+      targetSessionsPerWeek: Number(project.targetSessionsPerWeek) || (project.frequency === 'daily' ? 7 : project.frequency === 'every_2_days' ? 3 : project.frequency === 'every_3_days' ? 2 : project.frequency === 'weekly' ? 1 : 0),
+      lastCompletedDate: project.lastCompletedDate || '',
+      completedDates: project.completedDates || [],
       subtasks: project.subtasks || []
     };
     const id = await db.projects.add(cleanProj);
@@ -834,6 +839,136 @@ class AppState {
     if (this.syncEnabled) await this.pushToCloud();
     this.notify();
     return id;
+  }
+
+  // Cadence evaluation for a project on a given date (defaulting to activeDate)
+  getProjectCadenceInfo(project, checkDateStr = null) {
+    const activeDate = checkDateStr || this.getActiveDate();
+    const today = new Date(activeDate + 'T00:00:00');
+    const day = this.days.find(d => d.date === activeDate);
+
+    const freq = project.frequency || (project.isDailyAllocation ? 'daily' : 'flexible');
+    
+    // Check if scheduled today in day.schedule
+    const prefix = project.name + ':';
+    const isScheduledToday = day && day.schedule ? day.schedule.some(t => t.name === project.name || t.name.startsWith(prefix)) : false;
+    const isCompletedToday = day && day.schedule ? day.schedule.some(t => (t.name === project.name || t.name.startsWith(prefix)) && (t.status === 'completed' || t.status === 'delayed')) : false;
+
+    // Check if recorded in completedDates or lastCompletedDate
+    const isMarkedDoneToday = isCompletedToday || (project.completedDates && project.completedDates.includes(activeDate)) || (project.lastCompletedDate === activeDate);
+
+    if (freq === 'daily') {
+      if (isMarkedDoneToday) {
+        return { freq, label: 'Daily', badgeClass: 'cadence-daily', statusText: 'Done Today ✅', isDue: false, isCompleted: true, urgencyBoost: 0 };
+      } else if (isScheduledToday) {
+        return { freq, label: 'Daily', badgeClass: 'cadence-daily', statusText: 'Scheduled Today 🕒', isDue: true, isCompleted: false, urgencyBoost: 80 };
+      } else {
+        return { freq, label: 'Daily', badgeClass: 'cadence-daily', statusText: 'Due Today ⚡', isDue: true, isCompleted: false, urgencyBoost: 100 };
+      }
+    }
+
+    if (freq === 'every_2_days' || freq === 'every_3_days') {
+      const intervalDays = freq === 'every_2_days' ? 2 : 3;
+      const lastDone = project.lastCompletedDate ? new Date(project.lastCompletedDate + 'T00:00:00') : (project.lastWorkedOn ? new Date(project.lastWorkedOn) : null);
+      let daysSinceLast = 999;
+      if (lastDone) {
+        daysSinceLast = Math.max(0, Math.floor((today - lastDone) / (1000 * 60 * 60 * 24)));
+      }
+
+      if (isMarkedDoneToday) {
+        return { freq, label: freq === 'every_2_days' ? 'Every 2 Days' : 'Every 3 Days', badgeClass: 'cadence-periodic', statusText: 'Done Today ✅', isDue: false, isCompleted: true, urgencyBoost: 0 };
+      } else if (daysSinceLast >= intervalDays) {
+        return { freq, label: freq === 'every_2_days' ? 'Every 2 Days' : 'Every 3 Days', badgeClass: 'cadence-periodic', statusText: 'Due Today ⚡', isDue: true, isCompleted: false, urgencyBoost: 90 };
+      } else {
+        const daysLeft = intervalDays - daysSinceLast;
+        return { freq, label: freq === 'every_2_days' ? 'Every 2 Days' : 'Every 3 Days', badgeClass: 'cadence-periodic', statusText: `Next in ${daysLeft}d`, isDue: false, isCompleted: false, urgencyBoost: 20 };
+      }
+    }
+
+    if (freq === 'weekly') {
+      // Check if completed in the current active week
+      const currentWeek = this.getDaysForActiveWeek();
+      const doneInWeek = currentWeek.some(d => {
+        if (project.completedDates && project.completedDates.includes(d.date)) return true;
+        if (project.lastCompletedDate === d.date) return true;
+        return d.schedule && d.schedule.some(t => (t.name === project.name || t.name.startsWith(prefix)) && (t.status === 'completed' || t.status === 'delayed'));
+      });
+
+      if (doneInWeek) {
+        return { freq, label: 'Weekly', badgeClass: 'cadence-weekly', statusText: 'Done This Week ✅', isDue: false, isCompleted: true, urgencyBoost: 0 };
+      } else {
+        // Find how many days left in the week (Sunday is weekDays[6])
+        const dayOfWeekIndex = today.getDay(); // 0 is Sun, 1 is Mon...
+        const daysLeftInWeek = dayOfWeekIndex === 0 ? 0 : (7 - dayOfWeekIndex);
+        const isUrgent = daysLeftInWeek <= 2;
+        return {
+          freq,
+          label: 'Weekly',
+          badgeClass: 'cadence-weekly',
+          statusText: isUrgent ? 'Due This Week ⚠️' : 'Due This Week ⏳',
+          isDue: true,
+          isCompleted: false,
+          urgencyBoost: isUrgent ? 85 : 60
+        };
+      }
+    }
+
+    // Flexible / Milestone-based
+    return { freq: 'flexible', label: 'Milestone', badgeClass: 'cadence-flexible', statusText: 'Flexible', isDue: false, isCompleted: false, urgencyBoost: 0 };
+  }
+
+  // Calculate daily time capacity vs doables
+  calculateDailyTimeCapacity(dateStr = null) {
+    const activeDate = dateStr || this.getActiveDate();
+    const day = this.days.find(d => d.date === activeDate);
+    
+    // Total day planning slots available (each slot is 60 minutes)
+    const totalSlots = this.timeIntervals.length || 16;
+    const totalCapacityHours = totalSlots;
+    const totalCapacityMinutes = totalSlots * 60;
+
+    // 1. Scheduled Tasks on today's calendar
+    const scheduledTasks = day ? day.schedule || [] : [];
+    const scheduledMinutes = scheduledTasks.length * 60;
+
+    // 2. Daily Recurring Projects Commitment (e.g. daily targets, durationPerSessionMinutes)
+    let dailyProjectCommitmentMinutes = 0;
+    this.projects.forEach(p => {
+      if (p.status === 'Completed' || p.status === 'Paused') return;
+      const freq = p.frequency || (p.isDailyAllocation ? 'daily' : 'flexible');
+      if (freq === 'daily') {
+        dailyProjectCommitmentMinutes += (p.durationPerSessionMinutes || p.dailyAllocationMinutes || 60);
+      }
+    });
+
+    // 3. Non-Negotiables Habits (e.g. 15 mins per non-negotiable)
+    const nnCount = this.nonNegotiables ? this.nonNegotiables.length : 0;
+    const nonNegotiablesEstimatedMinutes = nnCount * 15;
+
+    // Total committed doables (habits + daily project allocations)
+    const doablesMinutes = dailyProjectCommitmentMinutes + nonNegotiablesEstimatedMinutes;
+
+    // Free time slots remaining on schedule
+    const freeSlots = this.timeIntervals.filter(slot => !scheduledTasks.some(t => t.plannedTime === slot));
+    const freeSlotsCount = freeSlots.length;
+    const remainingFreeMinutes = freeSlotsCount * 60;
+    const remainingFreeHours = Number((remainingFreeMinutes / 60).toFixed(1));
+
+    return {
+      totalCapacityMinutes,
+      totalCapacityHours,
+      scheduledMinutes,
+      scheduledHours: Number((scheduledMinutes / 60).toFixed(1)),
+      scheduledCount: scheduledTasks.length,
+      dailyProjectCommitmentMinutes,
+      nonNegotiablesEstimatedMinutes,
+      doablesMinutes,
+      doablesHours: Number((doablesMinutes / 60).toFixed(1)),
+      freeSlots,
+      freeSlotsCount,
+      remainingFreeMinutes,
+      remainingFreeHours
+    };
   }
 
   async updateProject(id, updates) {
