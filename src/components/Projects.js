@@ -498,6 +498,8 @@ export function getProjectQueueCardHTML(state, processedProjects, options = {}) 
 export function renderProjects(container, state) {
   // 1. Calculate Priority Scores & Health for all projects with Cadence Boost
   const activeDate = state.getActiveDate();
+  const todayDateStr = state.getTodayDateStr();
+  const isToday = activeDate === todayDateStr;
   const processedProjects = computeProcessedProjects(state, activeDate);
 
 
@@ -547,9 +549,9 @@ export function renderProjects(container, state) {
   // 3. Daily Available Time vs Doables Calculator
   const capacity = state.calculateDailyTimeCapacity(activeDate);
   const totalMinutes = capacity.totalCapacityMinutes || (16 * 60);
-  const doablesPct = Math.min(100, Math.round((capacity.doablesMinutes / totalMinutes) * 100));
-  const scheduledPct = Math.min(100 - doablesPct, Math.round((capacity.scheduledMinutes / totalMinutes) * 100));
-  const freePct = Math.max(0, 100 - doablesPct - scheduledPct);
+  const scheduledPct = Math.min(100, Math.round((capacity.scheduledMinutes / totalMinutes) * 100));
+  const doablesPct = Math.min(100 - scheduledPct, Math.round((capacity.unscheduledDoablesMinutes / totalMinutes) * 100));
+  const freePct = Math.max(0, 100 - scheduledPct - doablesPct);
 
   // Build smart list of tasks that fit inside remaining free time
   const remainingFreeMins = Math.max(0, capacity.remainingFreeMinutes);
@@ -647,21 +649,37 @@ export function renderProjects(container, state) {
           
           <!-- Daily Available Time vs Doables Calculator Card -->
           <div class="card">
-            <div class="card-title" style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px;">
-              <div style="display:flex; align-items:center; gap:8px;">
+            <div class="card-title" style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px;">
+              <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
                 <span>⚖️ Daily Time Capacity vs Doables</span>
-                <span style="font-size:11px; font-weight:600; color:var(--text-secondary);">(${activeDate})</span>
+                <div style="display:flex; align-items:center; gap:4px;">
+                  <button class="btn btn-secondary btn-sm" id="cap-prev-day-btn" style="padding:2px 8px; font-size:11px; height:24px;" title="Previous Day">◀</button>
+                  <span class="badge" style="font-size:11px; font-weight:700; ${isToday ? 'background:var(--accent-glow); color:var(--accent);' : 'background:var(--bg-secondary); color:var(--text-primary);'}">
+                    ${isToday ? '📅 Today • ' : ''}${activeDate}
+                  </span>
+                  <button class="btn btn-secondary btn-sm" id="cap-next-day-btn" style="padding:2px 8px; font-size:11px; height:24px;" title="Next Day">▶</button>
+                  ${!isToday ? `
+                    <button class="btn btn-primary btn-sm" id="cap-today-btn" style="padding:2px 8px; font-size:11px; font-weight:700; height:24px;">
+                      📅 Jump to Today (${todayDateStr})
+                    </button>
+                  ` : ''}
+                </div>
               </div>
-              <span style="font-size:11px; font-weight:700; color:var(--accent); font-family:var(--font-mono);">
-                ${capacity.freeSlotsCount} free slot${capacity.freeSlotsCount === 1 ? '' : 's'} (${capacity.remainingFreeHours}h free)
-              </span>
+              <div style="display:flex; align-items:center; gap:8px;">
+                <span style="font-size:12px; font-weight:800; color:var(--success); font-family:var(--font-mono);">
+                  ${capacity.remainingFreeHours}h free time left
+                </span>
+                <span style="font-size:11px; color:var(--text-secondary); font-family:var(--font-mono);">
+                  (${capacity.freeSlotsCount} open slot${capacity.freeSlotsCount === 1 ? '' : 's'})
+                </span>
+              </div>
             </div>
 
             <!-- Visual Segmented Capacity Progress Bar -->
             <div style="margin: 12px 0 8px 0;">
               <div class="capacity-progress-bar">
-                <div class="capacity-seg-doables" style="width: ${doablesPct}%;" title="Committed Doables: ${capacity.doablesHours}h (${doablesPct}%)"></div>
                 <div class="capacity-seg-scheduled" style="width: ${scheduledPct}%;" title="Scheduled in Calendar: ${capacity.scheduledHours}h (${scheduledPct}%)"></div>
+                <div class="capacity-seg-doables" style="width: ${doablesPct}%;" title="Doables Remaining: ${capacity.unscheduledDoablesHours}h (${doablesPct}%)"></div>
                 <div class="capacity-seg-free" style="width: ${freePct}%;" title="Remaining Free Time: ${capacity.remainingFreeHours}h (${freePct}%)"></div>
               </div>
               <!-- Legend & Breakdown -->
@@ -1294,6 +1312,41 @@ function bindProjectsEvents(container, state, processedProjects) {
       }
     });
   });
+
+  // Capacity Card Date Navigation Handlers
+  const capPrevBtn = container.querySelector('#cap-prev-day-btn');
+  if (capPrevBtn) {
+    capPrevBtn.addEventListener('click', async () => {
+      const current = new Date(state.getActiveDate() + 'T00:00:00');
+      current.setDate(current.getDate() - 1);
+      const y = current.getFullYear();
+      const m = String(current.getMonth() + 1).padStart(2, '0');
+      const d = String(current.getDate()).padStart(2, '0');
+      await state.setActiveDate(`${y}-${m}-${d}`);
+      renderProjects(container, state);
+    });
+  }
+
+  const capNextBtn = container.querySelector('#cap-next-day-btn');
+  if (capNextBtn) {
+    capNextBtn.addEventListener('click', async () => {
+      const current = new Date(state.getActiveDate() + 'T00:00:00');
+      current.setDate(current.getDate() + 1);
+      const y = current.getFullYear();
+      const m = String(current.getMonth() + 1).padStart(2, '0');
+      const d = String(current.getDate()).padStart(2, '0');
+      await state.setActiveDate(`${y}-${m}-${d}`);
+      renderProjects(container, state);
+    });
+  }
+
+  const capTodayBtn = container.querySelector('#cap-today-btn');
+  if (capTodayBtn) {
+    capTodayBtn.addEventListener('click', async () => {
+      await state.setActiveDate(state.getTodayDateStr());
+      renderProjects(container, state);
+    });
+  }
 
   // Cadence selection helper text in New Project form
   const cadenceSelect = container.querySelector('#new-proj-cadence');

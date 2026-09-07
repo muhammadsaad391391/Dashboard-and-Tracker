@@ -948,44 +948,89 @@ class AppState {
     const totalCapacityMinutes = totalSlots * 60;
 
     // 1. Scheduled Tasks on today's calendar
-    const scheduledTasks = day ? day.schedule || [] : [];
-    const scheduledMinutes = scheduledTasks.length * 60;
+    const scheduledTasks = day ? (day.schedule || []) : [];
+    const scheduledCount = scheduledTasks.length;
+    const scheduledMinutes = scheduledCount * 60;
+    const scheduledHours = Number((scheduledMinutes / 60).toFixed(1));
 
-    // 2. Daily Recurring Projects Commitment (e.g. daily targets, durationPerSessionMinutes)
-    let dailyProjectCommitmentMinutes = 0;
-    this.projects.forEach(p => {
-      if (p.status === 'Completed' || p.status === 'Paused') return;
-      const freq = p.frequency || (p.isDailyAllocation ? 'daily' : 'flexible');
-      if (freq === 'daily') {
-        // Available Time projects do NOT consume rigid daily committed doables
-        if (p.durationMode === 'available') return;
-        dailyProjectCommitmentMinutes += (p.durationPerSessionMinutes || p.dailyAllocationMinutes || 60);
-      }
-    });
-
-    // 3. Non-Negotiables Habits (e.g. 15 mins per non-negotiable)
+    // 2. Non-Negotiables Habits (e.g. 15 mins per non-negotiable)
     const nnCount = this.nonNegotiables ? this.nonNegotiables.length : 0;
     const nonNegotiablesEstimatedMinutes = nnCount * 15;
 
+    // 3. Project Commitments (Daily routines, due cadences, and active tasks targeted for today)
+    let dailyProjectCommitmentMinutes = 0;
+    let scheduledDoablesMinutes = 0;
+
+    this.projects.forEach(p => {
+      if (p.status === 'Completed' || p.status === 'Paused') return;
+      // Available Time projects do NOT consume rigid daily committed doables
+      if (p.durationMode === 'available') return;
+
+      const freq = p.frequency || (p.isDailyAllocation ? 'daily' : 'flexible');
+      const sessionDuration = p.durationPerSessionMinutes || p.dailyAllocationMinutes || 60;
+
+      // Pending subtasks not completed today
+      const pendingSubtasks = (p.subtasks || []).filter(s => !s.completed && !this.isTaskCompletedToday(s, activeDate));
+      const subtasksMinutes = pendingSubtasks.reduce((sum, s) => sum + (Number(s.estimatedMinutes) || 45), 0);
+
+      let projCommittedToday = 0;
+      if (freq === 'daily') {
+        projCommittedToday = Math.max(sessionDuration, subtasksMinutes);
+      } else {
+        const cadence = this.getProjectCadenceInfo(p, activeDate);
+        if (cadence && cadence.isDue) {
+          projCommittedToday = Math.max(sessionDuration, subtasksMinutes);
+        } else if (subtasksMinutes > 0) {
+          projCommittedToday = subtasksMinutes;
+        }
+      }
+
+      dailyProjectCommitmentMinutes += projCommittedToday;
+
+      // Check how much of this project is already scheduled in the day's calendar
+      const scheduledTasksForProj = scheduledTasks.filter(t => 
+        (t.name && (t.name.startsWith(p.name + ':') || t.name === p.name)) ||
+        (t.type && p.type && t.type === p.type && t.type !== 'general')
+      );
+      const projScheduledMinutes = scheduledTasksForProj.length * 60;
+      scheduledDoablesMinutes += Math.min(projCommittedToday, projScheduledMinutes);
+    });
+
     // Total committed doables (habits + daily project allocations)
     const doablesMinutes = dailyProjectCommitmentMinutes + nonNegotiablesEstimatedMinutes;
+    const doablesHours = Number((doablesMinutes / 60).toFixed(1));
+
+    // Unscheduled doables remaining (doables committed but not yet placed on calendar)
+    const unscheduledDoablesMinutes = Math.max(0, doablesMinutes - scheduledDoablesMinutes);
+    const unscheduledDoablesHours = Number((unscheduledDoablesMinutes / 60).toFixed(1));
+
+    // Total Busy Minutes = all scheduled calendar time + any doables not yet placed in calendar
+    const totalBusyMinutes = scheduledMinutes + unscheduledDoablesMinutes;
+    const totalBusyHours = Number((totalBusyMinutes / 60).toFixed(1));
+
+    // Remaining Free Minutes = Total Capacity minus Total Busy Minutes
+    const remainingFreeMinutes = Math.max(0, totalCapacityMinutes - totalBusyMinutes);
+    const remainingFreeHours = Number((remainingFreeMinutes / 60).toFixed(1));
 
     // Free time slots remaining on schedule
     const freeSlots = this.timeIntervals.filter(slot => !scheduledTasks.some(t => t.plannedTime === slot));
     const freeSlotsCount = freeSlots.length;
-    const remainingFreeMinutes = freeSlotsCount * 60;
-    const remainingFreeHours = Number((remainingFreeMinutes / 60).toFixed(1));
 
     return {
+      activeDate,
       totalCapacityMinutes,
       totalCapacityHours,
       scheduledMinutes,
-      scheduledHours: Number((scheduledMinutes / 60).toFixed(1)),
-      scheduledCount: scheduledTasks.length,
+      scheduledHours,
+      scheduledCount,
       dailyProjectCommitmentMinutes,
       nonNegotiablesEstimatedMinutes,
       doablesMinutes,
-      doablesHours: Number((doablesMinutes / 60).toFixed(1)),
+      doablesHours,
+      unscheduledDoablesMinutes,
+      unscheduledDoablesHours,
+      totalBusyMinutes,
+      totalBusyHours,
       freeSlots,
       freeSlotsCount,
       remainingFreeMinutes,
