@@ -3,6 +3,8 @@ import { calculateStreak } from './Header.js';
 import confetti from 'canvas-confetti';
 import { showPlannerCellPopup } from './PlannerCellPopup.js';
 import { showToast } from '../main.js';
+import { computeProcessedProjects, getProjectQueueCardHTML, bindProjectQueueEvents } from './Projects.js';
+
 
 export function renderDashboard(container, state) {
   // 1. Identify the active date
@@ -100,40 +102,8 @@ export function renderDashboard(container, state) {
   }
 
   // Calculate Cadence & Priority Recommendations for Dashboard
-  const todayDateObj = new Date(activeDate + 'T00:00:00');
-  const processedProjects = (state.projects || []).map(proj => {
-    const cadence = state.getProjectCadenceInfo(proj, activeDate);
-    let urgency = 20;
-    let daysRemaining = 999;
-    if (proj.deadline) {
-      const deadlineDate = new Date(proj.deadline + 'T00:00:00');
-      const diffTime = deadlineDate - todayDateObj;
-      daysRemaining = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-      if (daysRemaining <= 0) urgency = 100;
-      else if (daysRemaining <= 3) urgency = 90;
-      else if (daysRemaining <= 7) urgency = 75;
-      else urgency = 40;
-    }
-    let importance = 50;
-    if (proj.priority === 'critical') importance = 100;
-    else if (proj.priority === 'high') importance = 75;
-    else if (proj.priority === 'medium') importance = 50;
-    else if (proj.priority === 'low') importance = 25;
+  const processedProjects = computeProcessedProjects(state, activeDate);
 
-    const cadenceBoost = cadence.urgencyBoost || 0;
-    let priorityScore = Math.round(
-      (urgency * 0.25) +
-      (importance * 0.20) +
-      (cadenceBoost * 0.25) +
-      (10)
-    );
-    if (cadence.isCompleted) {
-      priorityScore = Math.max(5, priorityScore - 40);
-    }
-    return { ...proj, cadence, daysRemaining, priorityScore };
-  });
-
-  processedProjects.sort((a, b) => b.priorityScore - a.priorityScore);
 
   let dashboardNextTask = null;
   let dashboardNextProject = null;
@@ -310,8 +280,19 @@ export function renderDashboard(container, state) {
       </div>
     </div>
 
+    <!-- 📊 Project Queue & Health Table -->
+    <div style="margin-bottom: 24px;">
+      ${getProjectQueueCardHTML(state, processedProjects, {
+        cardTitle: '📊 Project Queue & Priorities',
+        showCategoryFilter: true,
+        idPrefix: 'db-',
+        emptyMessage: 'No projects created yet. Head to Project Hub to add projects!'
+      })}
+    </div>
+
     <!-- Active day summary list and quick-toggle options -->
     <div class="today-highlight-grid">
+
       
       <!-- Day's Daily Schedule -->
       <div class="card">
@@ -437,7 +418,12 @@ export function renderDashboard(container, state) {
     gotoNonNeg.addEventListener('click', () => state.setView('non-negotiables'));
   }
 
+
+  // Bind Project Queue events in Dashboard
+  bindProjectQueueEvents(container, state, () => renderDashboard(container, state), { idPrefix: 'db-' });
+
   // 1-Tap Schedule Next Recommended Action from Dashboard
+
   const dbScheduleNextBtn = container.querySelector('#dashboard-schedule-next-btn');
   if (dbScheduleNextBtn) {
     dbScheduleNextBtn.addEventListener('click', async () => {

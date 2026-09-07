@@ -2256,3 +2256,23 @@ html.light .theme-switch-thumb {
   }
 }
 
+/* Responsive Project Queue & Health Table / Mobile Cards */
+@media (max-width: 768px) {
+  .desktop-only-table-wrapper {
+    display: none !important;
+  }
+  .mobile-only-project-list {
+    display: flex !important;
+  }
+}
+
+@media (min-width: 769px) {
+  .desktop-only-table-wrapper {
+    display: block !important;
+  }
+  .mobile-only-project-list {
+    display: none !important;
+  }
+}
+
+

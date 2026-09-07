@@ -2,7 +2,7 @@ import { icons } from '../icons.js';
 import confetti from 'canvas-confetti';
 import { showPlannerCellPopup } from './PlannerCellPopup.js';
 import { showToast } from '../main.js';
-import { showEditProjectModal, showEditTaskModal } from './Projects.js';
+import { computeProcessedProjects, getProjectQueueCardHTML, bindProjectQueueEvents } from './Projects.js';
 
 export function renderCategoryTracker(container, state, categoryId, categoryLabel, categoryType, categoryIcon) {
   let savedScrollLeft = 0;
@@ -11,8 +11,12 @@ export function renderCategoryTracker(container, state, categoryId, categoryLabe
     savedScrollLeft = oldSpreadsheet.scrollLeft;
   }
 
+  const activeDate = state.getActiveDate();
+  const processedProjects = computeProcessedProjects(state, activeDate);
+
   // Get all projects for this category
   const catProjects = state.projects.filter(p => p.type === categoryType);
+
   let totalPendingTasks = 0;
   let totalCompletedTasks = 0;
   catProjects.forEach(p => {
@@ -250,122 +254,18 @@ export function renderCategoryTracker(container, state, categoryId, categoryLabe
         </div>
       </div>
 
-      <!-- Projects and Tasks Content -->
-      ${catProjects.length === 0 ? `
-        <div style="text-align:center; padding:24px 16px; color:var(--text-muted); font-size:13px; background:var(--bg-tertiary); border-radius:var(--radius-sm); border:1px dashed var(--border-color);">
-          <div style="font-size:24px; margin-bottom:6px;">📚</div>
-          <div style="font-weight:700; color:var(--text-primary); margin-bottom:4px;">No ${categoryLabel} Projects Yet</div>
-          <div>Create a project above to organize your tasks and schedule them directly into the grid!</div>
-        </div>
-      ` : `
-        <div style="display:flex; flex-direction:column; gap:14px;">
-          ${catProjects.map(proj => {
-            const cadence = state.getProjectCadenceInfo(proj, activeDate);
-            const pendingTasks = (proj.subtasks || []).filter(s => !s.completed);
-            const completedTasks = (proj.subtasks || []).filter(s => s.completed);
-            const total = (proj.subtasks || []).length;
-            const pct = total > 0 ? Math.round((completedTasks.length / total) * 100) : 0;
-
-            return `
-              <div class="cat-proj-card" style="background:var(--bg-tertiary); border:1px solid var(--border-color); border-radius:var(--radius-sm); padding:14px;">
-                <!-- Project Title Bar -->
-                <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px; margin-bottom:8px;">
-                  <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
-                    <span style="font-size:14px; font-weight:800; color:var(--text-primary);">${proj.name}</span>
-                    <span class="badge priority-${proj.priority || 'medium'}" style="font-size:10px; text-transform:uppercase; font-weight:700; padding:2px 6px; border-radius:4px;">${proj.priority || 'medium'}</span>
-                    <span class="cadence-badge ${cadence.badgeClass}" style="font-size:10px; padding:2px 6px; border-radius:4px;">${cadence.label}</span>
-                    <span class="cadence-status-pill ${cadence.statusClass}" style="font-size:10px; padding:2px 6px; border-radius:4px;">${cadence.statusText}</span>
-                    ${proj.durationMode === 'available' ? `
-                      <span class="cadence-badge cadence-available" style="font-size:10px; padding:2px 6px; border-radius:4px;" title="Flexible free-time project">⚡ When Free</span>
-                    ` : (proj.durationPerSessionMinutes || proj.dailyAllocationMinutes ? `
-                      <span style="font-size:10px; color:var(--text-muted); background:var(--bg-secondary); padding:2px 6px; border-radius:4px; font-family:var(--font-mono); border:1px solid var(--border-color);">⏱ ${proj.durationPerSessionMinutes || proj.dailyAllocationMinutes}m</span>
-                    ` : '')}
-                  </div>
-                  <div style="display:flex; align-items:center; gap:8px;">
-                    <span style="font-size:11px; font-weight:700; color:var(--text-secondary);">${completedTasks.length} / ${total} tasks</span>
-                    <div style="width:60px; height:6px; background:var(--bg-secondary); border-radius:3px; overflow:hidden;">
-                      <div style="width:${pct}%; height:100%; background:var(--accent-gradient); border-radius:3px;"></div>
-                    </div>
-                    <button class="btn btn-secondary btn-sm cat-edit-proj-btn" data-id="${proj.id}" style="height:26px; padding:0 8px; font-size:11px; gap:4px;" title="Edit Project">
-                      ${icons.edit}
-                    </button>
-                    <button class="btn btn-secondary btn-sm cat-delete-proj-btn" data-id="${proj.id}" style="height:26px; padding:0 8px; font-size:11px; color:var(--danger);" title="Delete Project">
-                      ${icons.trash}
-                    </button>
-                  </div>
-                </div>
-
-                ${proj.goal ? `<div style="font-size:11px; color:var(--text-muted); margin-bottom:4px;">🎯 ${proj.goal}</div>` : ''}
-                ${proj.nextGoal ? `<div style="font-size:11px; color:var(--text-secondary); margin-bottom:6px;">🚩 <strong>Next Milestone:</strong> ${proj.nextGoal} ${proj.deadline ? `<span style="font-size:10px; color:var(--text-muted); margin-left:8px;">📅 Due: ${proj.deadline}</span>` : ''}</div>` : (proj.deadline ? `<div style="font-size:11px; color:var(--text-muted); margin-bottom:6px;">📅 Due: ${proj.deadline}</div>` : '')}
-
-                <!-- Quick Add Task Row -->
-                <div style="display:flex; gap:6px; margin-bottom:10px;">
-                  <input type="text" class="premium-input cat-add-task-input" data-proj-id="${proj.id}" placeholder="Add task to ${proj.name}..." style="flex:1; height:30px; font-size:12px; padding:4px 8px;">
-                  <input type="number" class="premium-input cat-add-task-est" data-proj-id="${proj.id}" placeholder="Mins" value="45" style="width:65px; height:30px; font-size:12px; padding:4px 6px;">
-                  <button class="btn btn-primary btn-sm cat-add-task-btn" data-proj-id="${proj.id}" style="height:30px; padding:0 12px; font-size:11px; font-weight:700;">+ Add</button>
-                </div>
-
-                <!-- Pending Tasks List -->
-                ${pendingTasks.length === 0 ? `
-                  <div style="font-size:12px; color:var(--text-muted); font-style:italic; padding:6px 0;">
-                    ✓ All tasks completed! Add a new task above.
-                  </div>
-                ` : `
-                  <div style="display:flex; flex-direction:column; gap:6px;">
-                    ${pendingTasks.map(task => {
-                      const isDoneToday = state.isTaskCompletedToday(task, activeDate);
-                      return `
-                        <div style="display:flex; align-items:center; justify-content:space-between; background:var(--bg-secondary); padding:8px 10px; border-radius:4px; border:1px solid ${isDoneToday ? 'rgba(16, 185, 129, 0.4)' : 'var(--border-color)'}; gap:8px;">
-                          <div style="display:flex; align-items:center; gap:8px; flex:1; min-width:0;">
-                            <input type="checkbox" class="cat-task-check" data-proj-id="${proj.id}" data-task-id="${task.id}" ${isDoneToday ? 'checked' : ''} style="width:16px; height:16px; cursor:pointer;" title="${isDoneToday ? 'Done for today (uncheck to undo)' : 'Mark done for today'}">
-                            <span style="font-size:13px; font-weight:600; color:var(--text-primary); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; ${isDoneToday ? 'text-decoration:line-through; opacity:0.65;' : ''}">${task.name}</span>
-                            ${isDoneToday ? `<span class="badge" style="background:rgba(16,185,129,0.15); color:#10b981; font-size:10px; padding:1px 5px; border-radius:3px; font-weight:700;">Done Today</span>` : ''}
-                            <span style="font-size:10px; font-family:var(--font-mono); color:var(--text-muted); background:var(--bg-tertiary); padding:1px 5px; border-radius:3px; margin-left:auto; flex-shrink:0;">~${task.estimatedMinutes || 30}m</span>
-                          </div>
-                          <div style="display:flex; align-items:center; gap:6px; flex-shrink:0;">
-                            <button class="btn btn-primary btn-sm cat-schedule-task-btn" data-proj-id="${proj.id}" data-task-id="${task.id}" data-task-name="${encodeURIComponent(task.name)}" style="height:26px; padding:0 8px; font-size:11px; font-weight:700;" title="Schedule into today's first available slot">
-                              ⚡ Schedule
-                            </button>
-                            <button class="btn btn-secondary btn-sm cat-edit-task-btn" data-proj-id="${proj.id}" data-task-id="${task.id}" style="height:26px; padding:0 6px; font-size:11px;" title="Edit Task Name & Duration">
-                              ${icons.edit}
-                            </button>
-                            <button class="btn btn-secondary btn-sm cat-complete-forever-btn" data-proj-id="${proj.id}" data-task-id="${task.id}" style="height:26px; padding:0 6px; font-size:10px; color:var(--text-secondary);" title="Complete Forever (Overall milestone done)">
-                              ✓ Forever
-                            </button>
-                            <button class="btn btn-secondary btn-sm cat-delete-task-btn" data-proj-id="${proj.id}" data-task-id="${task.id}" style="height:26px; width:26px; padding:0; justify-content:center; color:var(--text-muted);" title="Delete task">&times;</button>
-                          </div>
-                        </div>
-                      `;
-                    }).join('')}
-                  </div>
-                `}
-
-                <!-- Completed Tasks Collapsible -->
-                ${completedTasks.length > 0 ? `
-                  <details style="margin-top:10px; font-size:12px; color:var(--text-muted);">
-                    <summary style="cursor:pointer; font-weight:600; padding:4px 0;">✓ Show ${completedTasks.length} Completed Forever Task${completedTasks.length > 1 ? 's' : ''}</summary>
-                    <div style="display:flex; flex-direction:column; gap:4px; margin-top:6px; padding-left:8px;">
-                      ${completedTasks.map(ct => `
-                        <div style="display:flex; align-items:center; justify-content:space-between; background:var(--bg-secondary); padding:4px 8px; border-radius:4px; border:1px solid var(--border-color); font-size:12px;">
-                          <div style="display:flex; align-items:center; gap:6px; text-decoration:line-through; opacity:0.65;">
-                            <span>✓</span>
-                            <span>${ct.name}</span>
-                            <span style="font-size:10px; font-family:var(--font-mono);">(${ct.estimatedMinutes || 30}m)</span>
-                          </div>
-                          <button class="btn btn-secondary btn-sm cat-restore-forever-btn" data-proj-id="${proj.id}" data-task-id="${ct.id}" style="height:22px; font-size:10px; padding:0 6px;" title="Bring back to active tasks">
-                            Restore
-                          </button>
-                        </div>
-                      `).join('')}
-                    </div>
-                  </details>
-                ` : ''}
-              </div>
-            `;
-          }).join('')}
-        </div>
-      `}
+      <!-- Unified Project Queue & Health for this Category -->
+      <div style="margin-top: 14px;">
+        ${getProjectQueueCardHTML(state, processedProjects, {
+          cardTitle: `📊 ${categoryLabel} Projects & Tasks`,
+          showCategoryFilter: false,
+          fixedCategory: categoryType,
+          idPrefix: `cat-${categoryType}-`,
+          emptyMessage: `No ${categoryLabel} projects yet. Use "+ New ${categoryLabel} Project" button above to create one!`
+        })}
+      </div>
     </div>
+
 
     <!-- Quick navigation bar for weeks -->
     <div class="card" style="padding: 12px; margin-bottom: 20px; display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap;">
@@ -586,185 +486,11 @@ export function renderCategoryTracker(container, state, categoryId, categoryLabe
     });
   }
 
-  // Edit Project Button
-  container.querySelectorAll('.cat-edit-proj-btn').forEach(btn => {
-    btn.addEventListener('click', (e) => {
-      e.stopPropagation();
-      const projId = Number(btn.getAttribute('data-id'));
-      showEditProjectModal(projId, state, () => {
-        renderCategoryTracker(container, state, categoryId, categoryLabel, categoryType, categoryIcon);
-      });
-    });
-  });
+  // Bind Unified Project Queue & Health Events for this Category
+  bindProjectQueueEvents(container, state, () => {
+    renderCategoryTracker(container, state, categoryId, categoryLabel, categoryType, categoryIcon);
+  }, { idPrefix: `cat-${categoryType}-`, fixedCategory: categoryType });
 
-  // Delete Project Button
-  container.querySelectorAll('.cat-delete-proj-btn').forEach(btn => {
-    btn.addEventListener('click', async (e) => {
-      e.stopPropagation();
-      const projId = Number(btn.getAttribute('data-id'));
-      const project = state.projects.find(p => p.id === projId);
-      const projName = project ? `"${project.name}"` : 'this project';
-      if (confirm(`Are you sure you want to permanently delete ${projName}? This will not return.`)) {
-        await state.deleteProject(projId);
-        showToast("Project deleted successfully");
-        renderCategoryTracker(container, state, categoryId, categoryLabel, categoryType, categoryIcon);
-      }
-    });
-  });
-
-  // 3. Add Task to Project
-  container.querySelectorAll('.cat-add-task-btn').forEach(btn => {
-    const projId = Number(btn.getAttribute('data-proj-id'));
-    const parent = btn.closest('.cat-proj-card');
-    const input = parent.querySelector(`.cat-add-task-input[data-proj-id="${projId}"]`);
-    const estInput = parent.querySelector(`.cat-add-task-est[data-proj-id="${projId}"]`);
-
-    const handleAdd = async () => {
-      const val = input.value.trim();
-      const est = parseInt(estInput ? estInput.value : '45') || 45;
-      if (!val) {
-        alert("Please enter a task name!");
-        return;
-      }
-      const project = state.projects.find(p => p.id === projId);
-      if (project) {
-        project.subtasks = project.subtasks || [];
-        project.subtasks.push({
-          id: 'sub-' + Date.now() + Math.random().toString(36).substring(7),
-          name: val,
-          estimatedMinutes: est,
-          completed: false
-        });
-        project.lastWorkedOn = Date.now();
-        await state.updateProject(projId, { subtasks: project.subtasks, lastWorkedOn: project.lastWorkedOn });
-        showToast(`Added "${val}" to ${project.name}`);
-        renderCategoryTracker(container, state, categoryId, categoryLabel, categoryType, categoryIcon);
-      }
-    };
-
-    btn.addEventListener('click', handleAdd);
-    if (input) {
-      input.addEventListener('keydown', (e) => {
-        if (e.key === 'Enter') handleAdd();
-      });
-    }
-  });
-
-  // 4. Mark Task Complete for Today
-  container.querySelectorAll('.cat-task-check').forEach(chk => {
-    chk.addEventListener('change', async () => {
-      const projId = Number(chk.getAttribute('data-proj-id'));
-      const taskId = chk.getAttribute('data-task-id');
-      await state.toggleTaskDoneToday(projId, taskId);
-      if (chk.checked) {
-        confetti({ particleCount: 30, spread: 25 });
-        showToast("Task completed for today! (Resets tomorrow)");
-      } else {
-        showToast("Task marked pending for today");
-      }
-      renderCategoryTracker(container, state, categoryId, categoryLabel, categoryType, categoryIcon);
-    });
-  });
-
-  // 5. Schedule Task into Grid
-  container.querySelectorAll('.cat-schedule-task-btn').forEach(btn => {
-    btn.addEventListener('click', async () => {
-      const projId = Number(btn.getAttribute('data-proj-id'));
-      const taskName = decodeURIComponent(btn.getAttribute('data-task-name'));
-      const project = state.projects.find(p => p.id === projId);
-
-      const activeDate = state.getActiveDate();
-      const day = state.days.find(d => d.date === activeDate);
-      if (!day) return;
-
-      const freeSlot = state.timeIntervals.find(slot => !day.schedule.some(t => t.plannedTime === slot));
-      if (!freeSlot) {
-        alert(`No free time slots available on your schedule for ${activeDate}! Please free up a slot in the grid.`);
-        return;
-      }
-
-      const newTask = {
-        id: 't-' + Date.now(),
-        name: `${project ? project.name + ': ' : ''}${taskName}`,
-        plannedTime: freeSlot,
-        status: 'pending',
-        missedReason: '',
-        actualTime: '',
-        type: categoryType
-      };
-
-      day.schedule.push(newTask);
-      day.schedule.sort((a, b) => {
-        const idxA = state.timeIntervals.indexOf(a.plannedTime);
-        const idxB = state.timeIntervals.indexOf(b.plannedTime);
-        return idxA - idxB;
-      });
-
-      await state.updateDay(day.date, { schedule: day.schedule });
-
-      if (project) {
-        project.lastWorkedOn = Date.now();
-        await state.updateProject(projId, { lastWorkedOn: project.lastWorkedOn });
-      }
-
-      confetti({ particleCount: 50, spread: 35 });
-      showToast(`⚡ Scheduled "${taskName}" at ${freeSlot} on ${activeDate}!`);
-      renderCategoryTracker(container, state, categoryId, categoryLabel, categoryType, categoryIcon);
-    });
-  });
-
-  // 6. Edit Task Name & Duration Modal
-  container.querySelectorAll('.cat-edit-task-btn').forEach(btn => {
-    btn.addEventListener('click', (e) => {
-      e.stopPropagation();
-      const projId = Number(btn.getAttribute('data-proj-id'));
-      const taskId = btn.getAttribute('data-task-id');
-      showEditTaskModal(projId, taskId, state, () => {
-        renderCategoryTracker(container, state, categoryId, categoryLabel, categoryType, categoryIcon);
-      });
-    });
-  });
-
-  // 7. Complete Task Forever
-  container.querySelectorAll('.cat-complete-forever-btn').forEach(btn => {
-    btn.addEventListener('click', async (e) => {
-      e.stopPropagation();
-      const projId = Number(btn.getAttribute('data-proj-id'));
-      const taskId = btn.getAttribute('data-task-id');
-      await state.toggleTaskDoneForever(projId, taskId);
-      confetti({ particleCount: 40, spread: 30 });
-      showToast("Task completed forever! (Moved to completed archive)");
-      renderCategoryTracker(container, state, categoryId, categoryLabel, categoryType, categoryIcon);
-    });
-  });
-
-  // 8. Restore Completed Forever Task
-  container.querySelectorAll('.cat-restore-forever-btn').forEach(btn => {
-    btn.addEventListener('click', async (e) => {
-      e.stopPropagation();
-      const projId = Number(btn.getAttribute('data-proj-id'));
-      const taskId = btn.getAttribute('data-task-id');
-      await state.toggleTaskDoneForever(projId, taskId);
-      showToast("Task restored to active list");
-      renderCategoryTracker(container, state, categoryId, categoryLabel, categoryType, categoryIcon);
-    });
-  });
-
-  // 9. Delete Task
-  container.querySelectorAll('.cat-delete-task-btn').forEach(btn => {
-    btn.addEventListener('click', async () => {
-      const projId = Number(btn.getAttribute('data-proj-id'));
-      const taskId = btn.getAttribute('data-task-id');
-      const project = state.projects.find(p => p.id === projId);
-      const task = project && project.subtasks ? project.subtasks.find(s => s.id === taskId) : null;
-      const tName = task ? `"${task.name}"` : 'this task';
-      if (confirm(`Delete task ${tName}?`)) {
-        await state.deleteProjectTask(projId, taskId);
-        showToast("Task deleted");
-        renderCategoryTracker(container, state, categoryId, categoryLabel, categoryType, categoryIcon);
-      }
-    });
-  });
 
   // Week Navigation Listeners
   container.querySelector(`#cat-prev-week-btn-${categoryId}`).addEventListener('click', async () => {

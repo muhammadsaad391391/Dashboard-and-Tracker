@@ -175,12 +175,11 @@ export function getProjectDetailsContentHTML(proj, state) {
   `;
 }
 
-export function renderProjects(container, state) {
-  // 1. Calculate Priority Scores & Health for all projects with Cadence Boost
-  const activeDate = state.getActiveDate();
+export function computeProcessedProjects(state, activeDateStr = null) {
+  const activeDate = activeDateStr || state.getActiveDate();
   const today = new Date(activeDate + 'T00:00:00');
   
-  const processedProjects = state.projects.map(proj => {
+  const processedProjects = (state.projects || []).map(proj => {
     // Cadence & Recurrence evaluation
     const cadence = state.getProjectCadenceInfo(proj, activeDate);
 
@@ -293,6 +292,215 @@ export function renderProjects(container, state) {
   
   // Sort projects by priority score descending
   processedProjects.sort((a, b) => b.priorityScore - a.priorityScore);
+  return processedProjects;
+}
+
+export function getProjectQueueCardHTML(state, processedProjects, options = {}) {
+  const {
+    cardTitle = '📊 Project Queue & Health',
+    showCategoryFilter = true,
+    fixedCategory = null,
+    idPrefix = '',
+    emptyMessage = 'No projects created yet. Use form below to add your first project!'
+  } = options;
+
+  let projectsToRender = processedProjects || [];
+  if (fixedCategory) {
+    projectsToRender = projectsToRender.filter(p => p.type === fixedCategory);
+  }
+
+  const categoryFilterId = `${idPrefix}proj-category-filter-select`;
+  const clearCatTasksBtnId = `${idPrefix}clear-cat-tasks-btn`;
+
+  return `
+    <div class="card project-queue-card" data-queue-prefix="${idPrefix}">
+      <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px; margin-bottom:14px;">
+        <div class="card-title" style="margin-bottom:0; display:flex; align-items:center; gap:8px;">
+          <span>${cardTitle}</span>
+          <span class="badge" style="background:var(--accent-glow); color:var(--accent); font-size:11px; font-weight:800; padding:2px 8px; border-radius:12px;">
+            ${projectsToRender.length} Project${projectsToRender.length === 1 ? '' : 's'}
+          </span>
+        </div>
+        ${showCategoryFilter ? `
+          <div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
+            <select id="${categoryFilterId}" class="premium-select proj-category-filter-select" data-prefix="${idPrefix}" style="height:28px; font-size:12px; padding:2px 8px;">
+              <option value="all">All Categories</option>
+              <option value="study">Study</option>
+              <option value="etsy_seo">Etsy + SEO</option>
+              <option value="quran">Quran Hifz</option>
+              <option value="flexible">General / Flexible</option>
+              ${(state.customSections || []).filter(s => s.type !== 'quran').map(s => `
+                <option value="${s.type}">${s.label}</option>
+              `).join('')}
+            </select>
+            <button class="btn btn-danger btn-sm clear-cat-tasks-btn" id="${clearCatTasksBtnId}" data-prefix="${idPrefix}" style="height:28px; font-size:11px; padding:0 10px;" title="Remove all tasks from projects in selected category">
+              🗑 Clear All Tasks in Category
+            </button>
+          </div>
+        ` : ''}
+      </div>
+      
+      <!-- Desktop Table View -->
+      <div class="desktop-only-table-wrapper" style="overflow-x:auto;">
+        <table style="width:100%; border-collapse:collapse; min-width:650px;" class="spreadsheet-table">
+          <thead>
+            <tr style="border-bottom:2px solid var(--border-color); text-align:left;">
+              <th style="padding:10px; font-size:12px; font-weight:700;">Project</th>
+              <th style="padding:10px; font-size:12px; font-weight:700;">Cadence</th>
+              <th style="padding:10px; font-size:12px; font-weight:700;">Priority</th>
+              <th style="padding:10px; font-size:12px; font-weight:700;">Progress</th>
+              <th style="padding:10px; font-size:12px; font-weight:700;">Deadline</th>
+              <th style="padding:10px; font-size:12px; font-weight:700;">Status</th>
+              <th style="padding:10px; font-size:12px; font-weight:700; text-align:right;">Actions</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${projectsToRender.length === 0 ? `
+              <tr><td colspan="7" style="text-align:center; padding:20px; color:var(--text-muted);">${emptyMessage}</td></tr>
+            ` : projectsToRender.map(proj => {
+              const priorityClass = proj.priority === 'critical' ? 'badge-danger' : proj.priority === 'high' ? 'badge-warning' : 'badge-info';
+              const cadencePillClass = proj.cadence.isDue ? 'due-today' : proj.cadence.isCompleted ? 'done-today' : 'on-track';
+              return `
+                <tr style="border-bottom:1px solid var(--border-color);" data-proj-row-id="${proj.id}" data-proj-type="${proj.type || 'flexible'}">
+                  <td style="padding:12px 10px;">
+                    <div style="display:flex; flex-direction:column; min-width:0;">
+                      <span style="font-weight:700; font-size:14px;">${proj.name}</span>
+                      <span style="font-size:11px; color:var(--text-muted); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; max-width:180px;">${proj.goal || 'No goal set'}</span>
+                    </div>
+                  </td>
+                  <td style="padding:12px 10px;">
+                    <div style="display:flex; flex-direction:column; gap:4px; align-items:flex-start;">
+                      <span class="cadence-badge ${proj.cadence.badgeClass}">${proj.cadence.label}</span>
+                      <span class="cadence-status-pill ${cadencePillClass}">${proj.cadence.statusText}</span>
+                    </div>
+                  </td>
+                  <td style="padding:12px 10px;">
+                    <div style="display:flex; align-items:center; gap:8px;">
+                      <span style="font-family:var(--font-mono); font-weight:700; font-size:14px; color:var(--accent);">${proj.priorityScore}</span>
+                      <span class="badge ${priorityClass}" style="font-size:9px; text-transform:uppercase;">${proj.priority}</span>
+                    </div>
+                  </td>
+                  <td style="padding:12px 10px; width:130px;">
+                    <div style="display:flex; align-items:center; gap:8px;">
+                      <div style="flex:1; height:6px; background-color:var(--bg-tertiary); border-radius:3px; overflow:hidden;">
+                        <div style="width:${proj.progress}%; height:100%; background:var(--accent-gradient);"></div>
+                      </div>
+                      <span style="font-size:11px; font-family:var(--font-mono); font-weight:700;">${proj.progress}%</span>
+                    </div>
+                  </td>
+                  <td style="padding:12px 10px; font-size:12px;">
+                    ${proj.deadline ? `
+                      <span style="font-weight:600;">${proj.deadline}</span><br>
+                      <span style="font-size:10px; color:var(--text-muted);">${proj.daysRemaining}d left</span>
+                    ` : '<span style="color:var(--text-muted);">None</span>'}
+                  </td>
+                  <td style="padding:12px 10px;">
+                    <span class="badge ${proj.paceClass}" style="font-size:10px;">${proj.paceStatus}</span>
+                  </td>
+                  <td style="padding:12px 10px; text-align:right;">
+                    <div style="display:flex; justify-content:flex-end; gap:6px;">
+                      <button class="btn btn-secondary btn-sm toggle-proj-details-btn" data-id="${proj.id}" data-prefix="${idPrefix}" style="padding:4px; width:28px; height:28px; justify-content:center;" title="View Tasks">
+                        ${icons.chevronDown}
+                      </button>
+                      <button class="btn btn-secondary btn-sm edit-proj-btn" data-id="${proj.id}" style="padding:4px; width:28px; height:28px; justify-content:center;" title="Edit Project">
+                        ${icons.edit}
+                      </button>
+                      <button class="btn btn-danger btn-sm delete-proj-btn" data-id="${proj.id}" style="padding:4px; width:28px; height:28px; justify-content:center;" title="Delete Project">
+                        ${icons.trash}
+                      </button>
+                    </div>
+                  </td>
+                </tr>
+                
+                <!-- Collapsible subtasks panel -->
+                <tr id="${idPrefix}proj-details-pane-${proj.id}" class="proj-details-pane-desktop" style="display:none; background-color:rgba(255,255,255,0.01);">
+                  <td colspan="7" style="padding:16px; border-bottom:1px solid var(--border-color);">
+                    ${getProjectDetailsContentHTML(proj, state)}
+                  </td>
+                </tr>
+              `;
+            }).join('')}
+          </tbody>
+        </table>
+      </div>
+
+      <!-- Mobile Card View -->
+      <div class="mobile-only-project-list" style="display:none; flex-direction:column; gap:16px;">
+        ${projectsToRender.length === 0 ? `
+          <div class="cell-empty" style="text-align:center; padding:20px; color:var(--text-muted);">${emptyMessage}</div>
+        ` : projectsToRender.map(proj => {
+          const priorityClass = proj.priority === 'critical' ? 'badge-danger' : proj.priority === 'high' ? 'badge-warning' : 'badge-info';
+          const cadencePillClass = proj.cadence.isDue ? 'due-today' : proj.cadence.isCompleted ? 'done-today' : 'on-track';
+          return `
+            <div class="project-mobile-card" style="background:var(--bg-secondary); border:1px solid var(--border-color); border-radius:var(--radius-md); padding:16px; display:flex; flex-direction:column; gap:12px;" data-proj-row-id="${proj.id}" data-proj-type="${proj.type || 'flexible'}">
+              <div style="display:flex; justify-content:space-between; align-items:flex-start; gap:8px;">
+                <div style="min-width:0; flex:1;">
+                  <div style="display:flex; align-items:center; gap:6px; flex-wrap:wrap; margin-bottom:4px;">
+                    <span style="font-weight:800; font-size:15px; color:var(--text-primary);">${proj.name}</span>
+                    <span class="cadence-badge ${proj.cadence.badgeClass}">${proj.cadence.label}</span>
+                  </div>
+                  <span style="font-size:11px; color:var(--text-secondary); display:block; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${proj.goal || 'No goal set'}</span>
+                </div>
+                <span class="cadence-status-pill ${cadencePillClass}">${proj.cadence.statusText}</span>
+              </div>
+
+              <div style="display:flex; justify-content:space-between; align-items:center; gap:12px; flex-wrap:wrap; font-size:12px; border-top:1px solid var(--border-color); border-bottom:1px solid var(--border-color); padding:8px 0;">
+                <div style="display:flex; align-items:center; gap:6px;">
+                  <span style="font-weight:700; color:var(--text-secondary);">Score:</span>
+                  <span style="font-family:var(--font-mono); font-weight:800; color:var(--accent);">${proj.priorityScore}</span>
+                  <span class="badge ${priorityClass}" style="font-size:9px; text-transform:uppercase;">${proj.priority}</span>
+                </div>
+                <div>
+                  ${proj.deadline ? `
+                    <span style="font-weight:600; color:var(--text-primary);">${proj.deadline}</span>
+                    <span style="font-size:10px; color:var(--text-secondary);">(${proj.daysRemaining}d left)</span>
+                  ` : '<span style="color:var(--text-muted);">No deadline</span>'}
+                </div>
+                <span class="badge ${proj.paceClass}" style="font-size:10px;">${proj.paceStatus}</span>
+              </div>
+
+              <div>
+                <div style="display:flex; justify-content:space-between; align-items:center; font-size:11px; margin-bottom:4px; font-weight:700;">
+                  <span>Progress</span>
+                  <span style="font-family:var(--font-mono);">${proj.progress}%</span>
+                </div>
+                <div style="width:100%; height:6px; background-color:var(--bg-tertiary); border-radius:3px; overflow:hidden;">
+                  <div style="width:${proj.progress}%; height:100%; background:var(--accent-gradient);"></div>
+                </div>
+              </div>
+
+              <div style="display:flex; justify-content:flex-end; gap:8px; margin-top:4px;">
+                <button class="btn btn-secondary btn-sm toggle-proj-details-btn" data-id="${proj.id}" data-prefix="${idPrefix}" style="padding:6px 12px; font-size:11px; display:flex; align-items:center; gap:4px; height:28px;">
+                  Tasks
+                  <span class="chevron-indicator" style="display:inline-block; transition:transform 0.2s;">▼</span>
+                </button>
+                <button class="btn btn-secondary btn-sm edit-proj-btn" data-id="${proj.id}" style="padding:6px; width:28px; height:28px; justify-content:center; display:flex; align-items:center;" title="Edit Project">
+                  ${icons.edit}
+                </button>
+                <button class="btn btn-danger btn-sm delete-proj-btn" data-id="${proj.id}" style="padding:6px; width:28px; height:28px; justify-content:center; display:flex; align-items:center;" title="Delete Project">
+                  ${icons.trash}
+                </button>
+              </div>
+
+              <!-- Collapsible subtasks list for mobile -->
+              <div id="${idPrefix}proj-details-pane-mobile-${proj.id}" class="proj-details-pane-mobile" style="display:none; border-top:1px dashed var(--border-color); padding-top:12px; margin-top:8px;">
+                ${getProjectDetailsContentHTML(proj, state)}
+              </div>
+            </div>
+          `;
+        }).join('')}
+      </div>
+
+    </div>
+  `;
+}
+
+export function renderProjects(container, state) {
+  // 1. Calculate Priority Scores & Health for all projects with Cadence Boost
+  const activeDate = state.getActiveDate();
+  const processedProjects = computeProcessedProjects(state, activeDate);
+
+
   
   // 2. Determine "⚡ What To Do Next" recommended action
   let recommendedTask = null;
@@ -511,178 +719,12 @@ export function renderProjects(container, state) {
           </div>
 
           <!-- Project Queue & Health Table -->
-          <div class="card">
-            <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px; margin-bottom:14px;">
-              <div class="card-title" style="margin-bottom:0;">📊 Project Queue & Health</div>
-              <div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
-                <select id="proj-category-filter-select" class="premium-select" style="height:28px; font-size:12px; padding:2px 8px;">
-                  <option value="all">All Categories</option>
-                  <option value="study">Study</option>
-                  <option value="etsy_seo">Etsy + SEO</option>
-                  <option value="quran">Quran Hifz</option>
-                  <option value="flexible">General / Flexible</option>
-                  ${(state.customSections || []).filter(s => s.type !== 'quran').map(s => `
-                    <option value="${s.type}">${s.label}</option>
-                  `).join('')}
-                </select>
-                <button class="btn btn-danger btn-sm" id="clear-cat-tasks-btn" style="height:28px; font-size:11px; padding:0 10px;" title="Remove all tasks from projects in selected category">
-                  🗑 Clear All Tasks in Category
-                </button>
-              </div>
-            </div>
-            
-            <!-- Desktop Table View -->
-            <div class="desktop-only-table-wrapper" style="overflow-x:auto;">
-              <table style="width:100%; border-collapse:collapse; min-width:650px;" class="spreadsheet-table">
-                <thead>
-                  <tr style="border-bottom:2px solid var(--border-color); text-align:left;">
-                    <th style="padding:10px; font-size:12px; font-weight:700;">Project</th>
-                    <th style="padding:10px; font-size:12px; font-weight:700;">Cadence</th>
-                    <th style="padding:10px; font-size:12px; font-weight:700;">Priority</th>
-                    <th style="padding:10px; font-size:12px; font-weight:700;">Progress</th>
-                    <th style="padding:10px; font-size:12px; font-weight:700;">Deadline</th>
-                    <th style="padding:10px; font-size:12px; font-weight:700;">Status</th>
-                    <th style="padding:10px; font-size:12px; font-weight:700; text-align:right;">Actions</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  ${processedProjects.length === 0 ? `
-                    <tr><td colspan="7" style="text-align:center; padding:20px; color:var(--text-muted);">No projects created yet. Use form below to add your first project!</td></tr>
-                  ` : processedProjects.map(proj => {
-                    const priorityClass = proj.priority === 'critical' ? 'badge-danger' : proj.priority === 'high' ? 'badge-warning' : 'badge-info';
-                    const cadencePillClass = proj.cadence.isDue ? 'due-today' : proj.cadence.isCompleted ? 'done-today' : 'on-track';
-                    return `
-                      <tr style="border-bottom:1px solid var(--border-color);" data-proj-row-id="${proj.id}" data-proj-type="${proj.type || 'flexible'}">
-                        <td style="padding:12px 10px;">
-                          <div style="display:flex; flex-direction:column; min-width:0;">
-                            <span style="font-weight:700; font-size:14px;">${proj.name}</span>
-                            <span style="font-size:11px; color:var(--text-muted); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; max-width:180px;">${proj.goal || 'No goal set'}</span>
-                          </div>
-                        </td>
-                        <td style="padding:12px 10px;">
-                          <div style="display:flex; flex-direction:column; gap:4px; align-items:flex-start;">
-                            <span class="cadence-badge ${proj.cadence.badgeClass}">${proj.cadence.label}</span>
-                            <span class="cadence-status-pill ${cadencePillClass}">${proj.cadence.statusText}</span>
-                          </div>
-                        </td>
-                        <td style="padding:12px 10px;">
-                          <div style="display:flex; align-items:center; gap:8px;">
-                            <span style="font-family:var(--font-mono); font-weight:700; font-size:14px; color:var(--accent);">${proj.priorityScore}</span>
-                            <span class="badge ${priorityClass}" style="font-size:9px; text-transform:uppercase;">${proj.priority}</span>
-                          </div>
-                        </td>
-                        <td style="padding:12px 10px; width:130px;">
-                          <div style="display:flex; align-items:center; gap:8px;">
-                            <div style="flex:1; height:6px; background-color:var(--bg-tertiary); border-radius:3px; overflow:hidden;">
-                              <div style="width:${proj.progress}%; height:100%; background:var(--accent-gradient);"></div>
-                            </div>
-                            <span style="font-size:11px; font-family:var(--font-mono); font-weight:700;">${proj.progress}%</span>
-                          </div>
-                        </td>
-                        <td style="padding:12px 10px; font-size:12px;">
-                          ${proj.deadline ? `
-                            <span style="font-weight:600;">${proj.deadline}</span><br>
-                            <span style="font-size:10px; color:var(--text-muted);">${proj.daysRemaining}d left</span>
-                          ` : '<span style="color:var(--text-muted);">None</span>'}
-                        </td>
-                        <td style="padding:12px 10px;">
-                          <span class="badge ${proj.paceClass}" style="font-size:10px;">${proj.paceStatus}</span>
-                        </td>
-                        <td style="padding:12px 10px; text-align:right;">
-                          <div style="display:flex; justify-content:flex-end; gap:6px;">
-                            <button class="btn btn-secondary btn-sm toggle-proj-details-btn" data-id="${proj.id}" style="padding:4px; width:28px; height:28px; justify-content:center;" title="View Tasks">
-                              ${icons.chevronDown}
-                            </button>
-                            <button class="btn btn-secondary btn-sm edit-proj-btn" data-id="${proj.id}" style="padding:4px; width:28px; height:28px; justify-content:center;" title="Edit Project">
-                              ${icons.edit}
-                            </button>
-                            <button class="btn btn-danger btn-sm delete-proj-btn" data-id="${proj.id}" style="padding:4px; width:28px; height:28px; justify-content:center;" title="Delete Project">
-                              ${icons.trash}
-                            </button>
-                          </div>
-                        </td>
-                      </tr>
-                      
-                      <!-- Collapsible subtasks panel -->
-                      <tr id="proj-details-pane-${proj.id}" style="display:none; background-color:rgba(255,255,255,0.01);">
-                        <td colspan="7" style="padding:16px; border-bottom:1px solid var(--border-color);">
-                          ${getProjectDetailsContentHTML(proj, state)}
-                        </td>
-                      </tr>
-                    `;
-                  }).join('')}
-                </tbody>
-              </table>
-            </div>
+          ${getProjectQueueCardHTML(state, processedProjects, {
+            cardTitle: '📊 Project Queue & Health',
+            showCategoryFilter: true,
+            idPrefix: ''
+          })}
 
-            <!-- Mobile Card View -->
-            <div class="mobile-only-project-list" style="display:none; flex-direction:column; gap:16px;">
-              ${processedProjects.length === 0 ? `
-                <div class="cell-empty" style="text-align:center; padding:20px; color:var(--text-muted);">No projects created yet. Use form below!</div>
-              ` : processedProjects.map(proj => {
-                const priorityClass = proj.priority === 'critical' ? 'badge-danger' : proj.priority === 'high' ? 'badge-warning' : 'badge-info';
-                const cadencePillClass = proj.cadence.isDue ? 'due-today' : proj.cadence.isCompleted ? 'done-today' : 'on-track';
-                return `
-                  <div class="project-mobile-card" style="background:var(--bg-secondary); border:1px solid var(--border-color); border-radius:var(--radius-md); padding:16px; display:flex; flex-direction:column; gap:12px;" data-proj-row-id="${proj.id}" data-proj-type="${proj.type || 'flexible'}">
-                    <div style="display:flex; justify-content:space-between; align-items:flex-start; gap:8px;">
-                      <div style="min-width:0; flex:1;">
-                        <div style="display:flex; align-items:center; gap:6px; flex-wrap:wrap; margin-bottom:4px;">
-                          <span style="font-weight:800; font-size:15px; color:var(--text-primary);">${proj.name}</span>
-                          <span class="cadence-badge ${proj.cadence.badgeClass}">${proj.cadence.label}</span>
-                        </div>
-                        <span style="font-size:11px; color:var(--text-secondary); display:block; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${proj.goal || 'No goal set'}</span>
-                      </div>
-                      <span class="cadence-status-pill ${cadencePillClass}">${proj.cadence.statusText}</span>
-                    </div>
-
-                    <div style="display:flex; justify-content:space-between; align-items:center; gap:12px; flex-wrap:wrap; font-size:12px; border-top:1px solid var(--border-color); border-bottom:1px solid var(--border-color); padding:8px 0;">
-                      <div style="display:flex; align-items:center; gap:6px;">
-                        <span style="font-weight:700; color:var(--text-secondary);">Score:</span>
-                        <span style="font-family:var(--font-mono); font-weight:800; color:var(--accent);">${proj.priorityScore}</span>
-                        <span class="badge ${priorityClass}" style="font-size:9px; text-transform:uppercase;">${proj.priority}</span>
-                      </div>
-                      <div>
-                        ${proj.deadline ? `
-                          <span style="font-weight:600; color:var(--text-primary);">${proj.deadline}</span>
-                          <span style="font-size:10px; color:var(--text-secondary);">(${proj.daysRemaining}d left)</span>
-                        ` : '<span style="color:var(--text-muted);">No deadline</span>'}
-                      </div>
-                      <span class="badge ${proj.paceClass}" style="font-size:10px;">${proj.paceStatus}</span>
-                    </div>
-
-                    <div>
-                      <div style="display:flex; justify-content:space-between; align-items:center; font-size:11px; margin-bottom:4px; font-weight:700;">
-                        <span>Progress</span>
-                        <span style="font-family:var(--font-mono);">${proj.progress}%</span>
-                      </div>
-                      <div style="width:100%; height:6px; background-color:var(--bg-tertiary); border-radius:3px; overflow:hidden;">
-                        <div style="width:${proj.progress}%; height:100%; background:var(--accent-gradient);"></div>
-                      </div>
-                    </div>
-
-                    <div style="display:flex; justify-content:flex-end; gap:8px; margin-top:4px;">
-                      <button class="btn btn-secondary btn-sm toggle-proj-details-btn" data-id="${proj.id}" style="padding:6px 12px; font-size:11px; display:flex; align-items:center; gap:4px; height:28px;">
-                        Tasks
-                        <span class="chevron-indicator" style="display:inline-block; transition:transform 0.2s;">▼</span>
-                      </button>
-                      <button class="btn btn-secondary btn-sm edit-proj-btn" data-id="${proj.id}" style="padding:6px; width:28px; height:28px; justify-content:center; display:flex; align-items:center;" title="Edit Project">
-                        ${icons.edit}
-                      </button>
-                      <button class="btn btn-danger btn-sm delete-proj-btn" data-id="${proj.id}" style="padding:6px; width:28px; height:28px; justify-content:center; display:flex; align-items:center;" title="Delete Project">
-                        ${icons.trash}
-                      </button>
-                    </div>
-
-                    <!-- Collapsible subtasks list for mobile -->
-                    <div id="proj-details-pane-mobile-${proj.id}" style="display:none; border-top:1px dashed var(--border-color); padding-top:12px; margin-top:8px;">
-                      ${getProjectDetailsContentHTML(proj, state)}
-                    </div>
-                  </div>
-                `;
-              }).join('')}
-            </div>
-
-          </div>
 
           <!-- Add Project Form -->
           <div class="card">
@@ -830,12 +872,367 @@ export function renderProjects(container, state) {
   bindProjectsEvents(container, state, processedProjects);
 }
 
+export function bindProjectQueueEvents(container, state, onRefreshCallback, options = {}) {
+  const prefix = (options && options.idPrefix) || '';
+  const fixedCategory = options && options.fixedCategory;
+
+  // 1. Toggle project details drawer (Desktop and Mobile)
+  container.querySelectorAll(`.toggle-proj-details-btn${prefix ? `[data-prefix="${prefix}"]` : ''}`).forEach(btn => {
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const id = btn.getAttribute('data-id');
+      const btnPrefix = btn.getAttribute('data-prefix') || prefix;
+      const pane = container.querySelector(`#${btnPrefix}proj-details-pane-${id}`);
+      const paneMobile = container.querySelector(`#${btnPrefix}proj-details-pane-mobile-${id}`);
+      
+      if (pane) {
+        const isCollapsed = pane.style.display === 'none' || !pane.style.display;
+        pane.style.display = isCollapsed ? 'table-row' : 'none';
+        btn.innerHTML = isCollapsed ? icons.chevronDown : icons.chevronRight;
+      }
+      if (paneMobile) {
+        const isCollapsed = paneMobile.style.display === 'none' || !paneMobile.style.display;
+        paneMobile.style.display = isCollapsed ? 'block' : 'none';
+        const indicator = btn.querySelector('.chevron-indicator');
+        if (indicator) {
+          indicator.style.transform = isCollapsed ? 'rotate(180deg)' : '';
+        }
+      }
+    });
+  });
+
+  // 2. Done for Today Checkbox
+  container.querySelectorAll('.subtask-today-check').forEach(check => {
+    check.addEventListener('change', async (e) => {
+      e.stopPropagation();
+      const projId = Number(check.getAttribute('data-proj-id'));
+      const taskId = check.getAttribute('data-task-id');
+      await state.toggleTaskDoneToday(projId, taskId);
+      if (check.checked) {
+        confetti({ particleCount: 35, spread: 25 });
+        showToast("Task completed for today! (Resets tomorrow)");
+      } else {
+        showToast("Task marked pending for today");
+      }
+      if (onRefreshCallback) onRefreshCallback();
+    });
+  });
+
+  // 3. Schedule Subtask into first available slot today
+  container.querySelectorAll('.schedule-subtask-btn').forEach(btn => {
+    btn.addEventListener('click', async (e) => {
+      e.stopPropagation();
+      const projId = Number(btn.getAttribute('data-proj-id'));
+      const taskId = btn.getAttribute('data-task-id');
+      const project = state.projects.find(p => p.id === projId);
+      if (!project) return;
+      const task = (project.subtasks || []).find(s => s.id === taskId);
+      const taskName = task ? task.name : decodeURIComponent(btn.getAttribute('data-task-name') || '');
+
+      const activeDate = (options && options.targetDate) || state.getActiveDate();
+      let day = state.days.find(d => d.date === activeDate);
+      if (!day) {
+        day = { date: activeDate, weekday: new Date(activeDate + 'T00:00:00').toLocaleDateString('en-US', { weekday: 'long' }), label: activeDate, schedule: [], satisfaction: { score: 5, note: '' }, finance: { revenue: 0, expenses: 0, savings: 0 }, nonNegotiables: {} };
+        state.days.push(day);
+      }
+
+      const freeSlot = state.timeIntervals.find(slot => !day.schedule.some(t => t.plannedTime === slot));
+      if (!freeSlot) {
+        alert(`No free time slots available on your schedule for ${activeDate}! Please free up a slot in Daily Planner first.`);
+        return;
+      }
+
+      const formattedTaskName = taskName.includes(project.name) ? taskName : `${project.name}: ${taskName}`;
+      const newTask = {
+        id: 't-' + Date.now() + Math.random().toString(36).substring(7),
+        name: formattedTaskName,
+        plannedTime: freeSlot,
+        status: 'pending',
+        missedReason: '',
+        actualTime: '',
+        type: project.type === 'flexible' ? 'general' : (project.type || 'general')
+      };
+
+      day.schedule.push(newTask);
+      day.schedule.sort((a, b) => {
+        const idxA = state.timeIntervals.indexOf(a.plannedTime);
+        const idxB = state.timeIntervals.indexOf(b.plannedTime);
+        return idxA - idxB;
+      });
+
+      await state.updateDay(day.date, { schedule: day.schedule });
+      project.lastWorkedOn = Date.now();
+      await state.updateProject(projId, { lastWorkedOn: project.lastWorkedOn });
+
+      confetti({ particleCount: 40, spread: 30 });
+      showToast(`⚡ Scheduled "${formattedTaskName}" at ${freeSlot} on ${activeDate}!`);
+      if (onRefreshCallback) onRefreshCallback();
+    });
+  });
+
+  // 4. Edit Subtask Name & Estimate via sleek modal
+  container.querySelectorAll('.edit-subtask-btn').forEach(btn => {
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const projId = Number(btn.getAttribute('data-proj-id'));
+      const taskId = btn.getAttribute('data-task-id');
+      showEditTaskModal(projId, taskId, state, () => {
+        if (onRefreshCallback) onRefreshCallback();
+      });
+    });
+  });
+
+  // 5. Complete Subtask Forever
+  container.querySelectorAll('.complete-forever-subtask-btn').forEach(btn => {
+    btn.addEventListener('click', async (e) => {
+      e.stopPropagation();
+      const projId = Number(btn.getAttribute('data-proj-id'));
+      const taskId = btn.getAttribute('data-task-id');
+      await state.toggleTaskDoneForever(projId, taskId);
+      confetti({ particleCount: 45, spread: 30 });
+      showToast("Task completed forever! (Moved to completed archive)");
+      if (onRefreshCallback) onRefreshCallback();
+    });
+  });
+
+  // 6. Restore Completed Forever Subtask
+  container.querySelectorAll('.restore-forever-subtask-btn').forEach(btn => {
+    btn.addEventListener('click', async (e) => {
+      e.stopPropagation();
+      const projId = Number(btn.getAttribute('data-proj-id'));
+      const taskId = btn.getAttribute('data-task-id');
+      await state.toggleTaskDoneForever(projId, taskId);
+      showToast("Task restored to active roadmap");
+      if (onRefreshCallback) onRefreshCallback();
+    });
+  });
+
+  // 7. Delete Subtask
+  container.querySelectorAll('.delete-subtask-btn').forEach(btn => {
+    btn.addEventListener('click', async (e) => {
+      e.stopPropagation();
+      const projId = Number(btn.getAttribute('data-proj-id'));
+      const taskId = btn.getAttribute('data-task-id');
+      const project = state.projects.find(p => p.id === projId);
+      const task = project && project.subtasks ? project.subtasks.find(s => s.id === taskId) : null;
+      const tName = task ? `"${task.name}"` : 'this task';
+      if (confirm(`Delete task ${tName}?`)) {
+        await state.deleteProjectTask(projId, taskId);
+        showToast("Task deleted");
+        if (onRefreshCallback) onRefreshCallback();
+      }
+    });
+  });
+
+  // 8. Clear All Tasks from Project
+  container.querySelectorAll('.clear-proj-tasks-btn').forEach(btn => {
+    btn.addEventListener('click', async (e) => {
+      e.stopPropagation();
+      const projId = Number(btn.getAttribute('data-proj-id'));
+      const project = state.projects.find(p => p.id === projId);
+      if (project) {
+        if (confirm(`Remove all tasks from "${project.name}"?`)) {
+          await state.clearProjectTasks(projId);
+          showToast(`All tasks removed from "${project.name}"`);
+          if (onRefreshCallback) onRefreshCallback();
+        }
+      }
+    });
+  });
+
+  // 9. Add Subtask to Project
+  container.querySelectorAll('.add-subtask-btn').forEach(btn => {
+    const parentContainer = btn.closest('tr, .project-mobile-card, .card') || container;
+    const projId = Number(btn.getAttribute('data-proj-id'));
+    const nameInput = parentContainer.querySelector(`.new-subtask-name[data-proj-id="${projId}"]`) || container.querySelector(`.new-subtask-name[data-proj-id="${projId}"]`);
+    const estInput = parentContainer.querySelector(`.new-subtask-est[data-proj-id="${projId}"]`) || container.querySelector(`.new-subtask-est[data-proj-id="${projId}"]`);
+    
+    const handleAddSubtask = async () => {
+      if (!nameInput) return;
+      const nameVal = nameInput.value.trim();
+      const estVal = parseInt(estInput ? estInput.value.trim() : '30') || 30;
+      
+      if (nameVal) {
+        const project = state.projects.find(p => p.id === projId);
+        if (project) {
+          const subtasks = project.subtasks || [];
+          subtasks.push({
+            id: 'sub-' + Date.now() + Math.random().toString(36).substring(7),
+            name: nameVal,
+            estimatedMinutes: estVal,
+            completed: false
+          });
+          project.lastWorkedOn = Date.now();
+          await state.updateProject(projId, { subtasks, lastWorkedOn: project.lastWorkedOn });
+          if (onRefreshCallback) onRefreshCallback();
+        }
+      } else {
+        alert("Please enter a task name first!");
+      }
+    };
+
+    btn.addEventListener('click', handleAddSubtask);
+    if (nameInput) {
+      nameInput.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') handleAddSubtask();
+      });
+    }
+  });
+
+  // 10. Quick Schedule Daily Allocation Block Today
+  container.querySelectorAll('.quick-schedule-alloc-btn').forEach(btn => {
+    btn.addEventListener('click', async (e) => {
+      e.stopPropagation();
+      const projId = Number(btn.getAttribute('data-proj-id'));
+      const project = state.projects.find(p => p.id === projId);
+      if (!project) return;
+
+      const activeDate = (options && options.targetDate) || state.getActiveDate();
+      let day = state.days.find(d => d.date === activeDate);
+      if (!day) return;
+
+      const firstFreeSlot = state.timeIntervals.find(slot => !day.schedule.some(item => item.plannedTime === slot));
+      if (!firstFreeSlot) {
+        alert("No free time slots available on your schedule for today! Free up a slot in Daily Planner first.");
+        return;
+      }
+
+      const newTask = {
+        id: 't-' + Date.now(),
+        name: `${project.name}: General Work`,
+        plannedTime: firstFreeSlot,
+        status: 'pending',
+        missedReason: '',
+        actualTime: '',
+        type: project.type === 'flexible' ? 'general' : (project.type || 'general')
+      };
+      
+      day.schedule.push(newTask);
+      day.schedule.sort((a, b) => {
+        const idxA = state.timeIntervals.indexOf(a.plannedTime);
+        const idxB = state.timeIntervals.indexOf(b.plannedTime);
+        return idxA - idxB;
+      });
+      
+      await state.updateDay(day.date, { schedule: day.schedule });
+      project.lastWorkedOn = Date.now();
+      await state.updateProject(projId, { lastWorkedOn: project.lastWorkedOn });
+
+      confetti({ particleCount: 50, spread: 35 });
+      showToast(`⚡ Scheduled 1 hr block for "${project.name}" at ${firstFreeSlot} today!`);
+      if (onRefreshCallback) onRefreshCallback();
+    });
+  });
+
+  // 11. Save Project Details
+  container.querySelectorAll('.save-proj-details-btn').forEach(btn => {
+    btn.addEventListener('click', async (e) => {
+      e.stopPropagation();
+      const parentContainer = btn.closest('tr, .project-mobile-card, .card') || container;
+      const projId = Number(btn.getAttribute('data-id'));
+      const project = state.projects.find(p => p.id === projId);
+      if (!project) return;
+
+      const availInput = parentContainer.querySelector(`.edit-proj-available[data-proj-id="${projId}"]`);
+      const nextInput = parentContainer.querySelector(`.edit-proj-nextgoal[data-proj-id="${projId}"]`);
+      
+      const avail = availInput ? (Number(availInput.value) || 0) : project.availableHoursPerDay;
+      const nextGoal = nextInput ? nextInput.value.trim() : project.nextGoal;
+
+      const updates = {
+        availableHoursPerDay: avail,
+        nextGoal: nextGoal
+      };
+
+      if (project.isDailyAllocation) {
+        const dailyMinutesInput = parentContainer.querySelector(`.edit-proj-daily-minutes[data-proj-id="${projId}"]`);
+        updates.dailyAllocationMinutes = dailyMinutesInput ? (Number(dailyMinutesInput.value) || 60) : project.dailyAllocationMinutes;
+      } else {
+        const effortInput = parentContainer.querySelector(`.edit-proj-effort[data-proj-id="${projId}"]`);
+        updates.estimatedHours = effortInput ? (Number(effortInput.value) || 0) : project.estimatedHours;
+      }
+      
+      await state.updateProject(projId, updates);
+      showToast("Project details saved successfully!");
+      if (onRefreshCallback) onRefreshCallback();
+    });
+  });
+
+  // 12. Edit Project button
+  container.querySelectorAll('.edit-proj-btn').forEach(btn => {
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const projId = Number(btn.getAttribute('data-id'));
+      showEditProjectModal(projId, state, () => {
+        if (onRefreshCallback) onRefreshCallback();
+      });
+    });
+  });
+
+  // 13. Delete Project button
+  container.querySelectorAll('.delete-proj-btn').forEach(btn => {
+    btn.addEventListener('click', async (e) => {
+      e.stopPropagation();
+      const id = btn.getAttribute('data-id');
+      const project = state.projects.find(p => p.id === Number(id));
+      const projName = project ? `"${project.name}"` : 'this project';
+      if (confirm(`Are you sure you want to permanently delete ${projName}? This will not return.`)) {
+        await state.deleteProject(id);
+        showToast("Project deleted successfully");
+        if (onRefreshCallback) onRefreshCallback();
+      }
+    });
+  });
+
+  // 14. Category Filter & Clear Tasks in Category
+  const catFilterSelect = container.querySelector(`#${prefix}proj-category-filter-select`) || container.querySelector('.proj-category-filter-select');
+  if (catFilterSelect) {
+    catFilterSelect.addEventListener('change', () => {
+      const selected = catFilterSelect.value;
+      const rows = container.querySelectorAll('tr[data-proj-row-id]');
+      const cards = container.querySelectorAll('.project-mobile-card[data-proj-row-id]');
+      
+      rows.forEach(r => {
+        const type = r.getAttribute('data-proj-type') || 'flexible';
+        const projId = r.getAttribute('data-proj-row-id');
+        const detailPane = container.querySelector(`#${prefix}proj-details-pane-${projId}`);
+        const visible = (selected === 'all' || type === selected);
+        r.style.display = visible ? '' : 'none';
+        if (!visible && detailPane) {
+          detailPane.style.display = 'none';
+        }
+      });
+      cards.forEach(c => {
+        const type = c.getAttribute('data-proj-type') || 'flexible';
+        c.style.display = (selected === 'all' || type === selected) ? 'flex' : 'none';
+      });
+    });
+  }
+
+  const clearCatTasksBtn = container.querySelector(`#${prefix}clear-cat-tasks-btn`) || container.querySelector('.clear-cat-tasks-btn');
+  if (clearCatTasksBtn) {
+    clearCatTasksBtn.addEventListener('click', async (e) => {
+      e.stopPropagation();
+      const selected = catFilterSelect ? catFilterSelect.value : (fixedCategory || 'all');
+      const label = selected === 'all' ? 'All Categories' : selected;
+      if (confirm(`Are you sure you want to remove all tasks from projects in ${label}? This cannot be undone.`)) {
+        await state.clearCategoryTasks(selected);
+        showToast(`Cleared all tasks in ${label}`);
+        if (onRefreshCallback) onRefreshCallback();
+      }
+    });
+  }
+}
+
 function bindProjectsEvents(container, state, processedProjects) {
   // 1-Tap Scheduling Helper into the first free slot on today's calendar
   const scheduleTaskInFirstFreeSlot = async (proj, taskName, estimatedMinutes, type) => {
     const activeDate = state.getActiveDate();
-    const day = state.days.find(d => d.date === activeDate);
-    if (!day) return;
+    let day = state.days.find(d => d.date === activeDate);
+    if (!day) {
+      day = { date: activeDate, weekday: new Date(activeDate + 'T00:00:00').toLocaleDateString('en-US', { weekday: 'long' }), label: activeDate, schedule: [], satisfaction: { score: 5, note: '' }, finance: { revenue: 0, expenses: 0, savings: 0 }, nonNegotiables: {} };
+      state.days.push(day);
+    }
 
     const firstFreeSlot = state.timeIntervals.find(slot => !day.schedule.some(t => t.plannedTime === slot));
     if (!firstFreeSlot) {
@@ -936,339 +1333,10 @@ function bindProjectsEvents(container, state, processedProjects) {
     });
   }
 
-  // D. Collapsible project details row triggers
-  container.querySelectorAll('.toggle-proj-details-btn').forEach(btn => {
-    btn.addEventListener('click', () => {
-      const id = btn.getAttribute('data-id');
-      const pane = container.querySelector(`#proj-details-pane-${id}`);
-      const paneMobile = container.querySelector(`#proj-details-pane-mobile-${id}`);
-      
-      if (pane) {
-        const isCollapsed = pane.style.display === 'none';
-        pane.style.display = isCollapsed ? 'table-row' : 'none';
-        btn.innerHTML = isCollapsed ? icons.chevronDown : icons.chevronRight; // flip arrow
-      }
-      if (paneMobile) {
-        const isCollapsed = paneMobile.style.display === 'none';
-        paneMobile.style.display = isCollapsed ? 'block' : 'none';
-        const indicator = btn.querySelector('.chevron-indicator');
-        if (indicator) {
-          indicator.style.transform = isCollapsed ? 'rotate(180deg)' : '';
-        }
-      }
-    });
-  });
+  // Bind Project Queue & Health Events (Drawers, Done Today, Schedule, Edit, Delete, Tasks, Filter)
+  bindProjectQueueEvents(container, state, () => renderProjects(container, state), { idPrefix: '' });
 
-  // E. Done for Today Checkbox
-  container.querySelectorAll('.subtask-today-check').forEach(check => {
-    check.addEventListener('change', async (e) => {
-      e.stopPropagation();
-      const projId = Number(check.getAttribute('data-proj-id'));
-      const taskId = check.getAttribute('data-task-id');
-      await state.toggleTaskDoneToday(projId, taskId);
-      if (check.checked) {
-        confetti({ particleCount: 35, spread: 25 });
-        showToast("Task completed for today! (Resets tomorrow)");
-      } else {
-        showToast("Task marked pending for today");
-      }
-      renderProjects(container, state);
-    });
-  });
 
-  // Schedule Subtask into first available slot today
-  container.querySelectorAll('.schedule-subtask-btn').forEach(btn => {
-    btn.addEventListener('click', async (e) => {
-      e.stopPropagation();
-      const projId = Number(btn.getAttribute('data-proj-id'));
-      const taskId = btn.getAttribute('data-task-id');
-      const project = state.projects.find(p => p.id === projId);
-      if (!project) return;
-      const task = (project.subtasks || []).find(s => s.id === taskId);
-      const taskName = task ? task.name : decodeURIComponent(btn.getAttribute('data-task-name') || '');
-
-      const activeDate = state.getActiveDate();
-      const day = state.days.find(d => d.date === activeDate);
-      if (!day) return;
-
-      const freeSlot = state.timeIntervals.find(slot => !day.schedule.some(t => t.plannedTime === slot));
-      if (!freeSlot) {
-        alert(`No free time slots available on your schedule for ${activeDate}! Please free up a slot in the Daily Planner first.`);
-        return;
-      }
-
-      const newTask = {
-        id: 't-' + Date.now(),
-        name: `${project.name}: ${taskName}`,
-        plannedTime: freeSlot,
-        status: 'pending',
-        missedReason: '',
-        actualTime: '',
-        type: project.type === 'flexible' ? 'general' : project.type
-      };
-
-      day.schedule.push(newTask);
-      day.schedule.sort((a, b) => {
-        const idxA = state.timeIntervals.indexOf(a.plannedTime);
-        const idxB = state.timeIntervals.indexOf(b.plannedTime);
-        return idxA - idxB;
-      });
-
-      await state.updateDay(day.date, { schedule: day.schedule });
-      project.lastWorkedOn = Date.now();
-      await state.updateProject(projId, { lastWorkedOn: project.lastWorkedOn });
-
-      confetti({ particleCount: 40, spread: 30 });
-      showToast(`⚡ Scheduled "${taskName}" at ${freeSlot} on ${activeDate}!`);
-      renderProjects(container, state);
-    });
-  });
-
-  // Edit Subtask Name & Estimate via sleek modal
-  container.querySelectorAll('.edit-subtask-btn').forEach(btn => {
-    btn.addEventListener('click', (e) => {
-      e.stopPropagation();
-      const projId = Number(btn.getAttribute('data-proj-id'));
-      const taskId = btn.getAttribute('data-task-id');
-      showEditTaskModal(projId, taskId, state, () => renderProjects(container, state));
-    });
-  });
-
-  // Complete Subtask Forever (Permanent milestone completion)
-  container.querySelectorAll('.complete-forever-subtask-btn').forEach(btn => {
-    btn.addEventListener('click', async (e) => {
-      e.stopPropagation();
-      const projId = Number(btn.getAttribute('data-proj-id'));
-      const taskId = btn.getAttribute('data-task-id');
-      await state.toggleTaskDoneForever(projId, taskId);
-      confetti({ particleCount: 45, spread: 30 });
-      showToast("Task completed forever! (Moved to completed archive)");
-      renderProjects(container, state);
-    });
-  });
-
-  // Restore Completed Forever Subtask
-  container.querySelectorAll('.restore-forever-subtask-btn').forEach(btn => {
-    btn.addEventListener('click', async (e) => {
-      e.stopPropagation();
-      const projId = Number(btn.getAttribute('data-proj-id'));
-      const taskId = btn.getAttribute('data-task-id');
-      await state.toggleTaskDoneForever(projId, taskId);
-      showToast("Task restored to active roadmap");
-      renderProjects(container, state);
-    });
-  });
-
-  // Delete Subtask
-  container.querySelectorAll('.delete-subtask-btn').forEach(btn => {
-    btn.addEventListener('click', async (e) => {
-      e.stopPropagation();
-      const projId = Number(btn.getAttribute('data-proj-id'));
-      const taskId = btn.getAttribute('data-task-id');
-      const project = state.projects.find(p => p.id === projId);
-      const task = project && project.subtasks ? project.subtasks.find(s => s.id === taskId) : null;
-      const tName = task ? `"${task.name}"` : 'this task';
-      if (confirm(`Delete task ${tName}?`)) {
-        await state.deleteProjectTask(projId, taskId);
-        showToast("Task deleted");
-        renderProjects(container, state);
-      }
-    });
-  });
-
-  // Clear All Tasks from Project
-  container.querySelectorAll('.clear-proj-tasks-btn').forEach(btn => {
-    btn.addEventListener('click', async (e) => {
-      e.stopPropagation();
-      const projId = Number(btn.getAttribute('data-proj-id'));
-      const project = state.projects.find(p => p.id === projId);
-      if (project) {
-        if (confirm(`Remove all tasks from "${project.name}"?`)) {
-          await state.clearProjectTasks(projId);
-          showToast(`All tasks removed from "${project.name}"`);
-          renderProjects(container, state);
-        }
-      }
-    });
-  });
-
-  // F. Add Subtask to Project (Properly scoped for both mobile cards and desktop table)
-  container.querySelectorAll('.add-subtask-btn').forEach(btn => {
-    const parentContainer = btn.closest('.mobile-project-card, .project-accordion-row') || container;
-    const projId = Number(btn.getAttribute('data-proj-id'));
-    const nameInput = parentContainer.querySelector(`.new-subtask-name[data-proj-id="${projId}"]`);
-    const estInput = parentContainer.querySelector(`.new-subtask-est[data-proj-id="${projId}"]`);
-    
-    const handleAddSubtask = async () => {
-      if (!nameInput) return;
-      const nameVal = nameInput.value.trim();
-      const estVal = parseInt(estInput ? estInput.value.trim() : '30') || 30;
-      
-      if (nameVal) {
-        const project = state.projects.find(p => p.id === projId);
-        if (project) {
-          const subtasks = project.subtasks || [];
-          subtasks.push({
-            id: 'sub-' + Date.now() + Math.random().toString(36).substring(7),
-            name: nameVal,
-            estimatedMinutes: estVal,
-            completed: false
-          });
-          project.lastWorkedOn = Date.now();
-          await state.updateProject(projId, { subtasks, lastWorkedOn: project.lastWorkedOn });
-          renderProjects(container, state);
-        }
-      } else {
-        alert("Please enter a task name first!");
-      }
-    };
-
-    btn.addEventListener('click', handleAddSubtask);
-    if (nameInput) {
-      nameInput.addEventListener('keydown', (e) => {
-        if (e.key === 'Enter') handleAddSubtask();
-      });
-    }
-  });
-
-  // Quick Schedule Daily Allocation Block Today
-  container.querySelectorAll('.quick-schedule-alloc-btn').forEach(btn => {
-    btn.addEventListener('click', async () => {
-      const projId = Number(btn.getAttribute('data-proj-id'));
-      const project = state.projects.find(p => p.id === projId);
-      if (!project) return;
-
-      const activeDate = state.getActiveDate();
-      const day = state.days.find(d => d.date === activeDate);
-      if (!day) return;
-
-      // Find the first free time slot in day
-      const firstFreeSlot = state.timeIntervals.find(slot => {
-        return !day.schedule.some(item => item.plannedTime === slot);
-      });
-      
-      if (!firstFreeSlot) {
-        alert("No free time slots available on your schedule for today! Free up a slot in the Daily Planner first.");
-        return;
-      }
-
-      // Add general work block task to day schedule
-      const newTask = {
-        id: 't-' + Date.now(),
-        name: `${project.name}: General Work`,
-        plannedTime: firstFreeSlot,
-        status: 'pending',
-        missedReason: '',
-        actualTime: '',
-        type: project.type === 'flexible' ? 'general' : project.type
-      };
-      
-      day.schedule.push(newTask);
-      day.schedule.sort((a, b) => {
-        const idxA = state.timeIntervals.indexOf(a.plannedTime);
-        const idxB = state.timeIntervals.indexOf(b.plannedTime);
-        return idxA - idxB;
-      });
-      
-      await state.updateDay(day.date, { schedule: day.schedule });
-      project.lastWorkedOn = Date.now();
-      await state.updateProject(projId, { lastWorkedOn: project.lastWorkedOn });
-
-      confetti({ particleCount: 50, spread: 35 });
-      alert(`Scheduled 1 hr block for "${project.name}" at ${firstFreeSlot} today!`);
-      renderProjects(container, state);
-    });
-  });
-
-  // G. Edit Project Details Save Button (Scoped for mobile & desktop)
-  container.querySelectorAll('.save-proj-details-btn').forEach(btn => {
-    btn.addEventListener('click', async () => {
-      const parentContainer = btn.closest('.mobile-project-card, .project-accordion-row') || container;
-      const projId = Number(btn.getAttribute('data-id'));
-      const project = state.projects.find(p => p.id === projId);
-      if (!project) return;
-
-      const availInput = parentContainer.querySelector(`.edit-proj-available[data-proj-id="${projId}"]`);
-      const nextInput = parentContainer.querySelector(`.edit-proj-nextgoal[data-proj-id="${projId}"]`);
-      
-      const avail = availInput ? (Number(availInput.value) || 0) : project.availableHoursPerDay;
-      const nextGoal = nextInput ? nextInput.value.trim() : project.nextGoal;
-
-      const updates = {
-        availableHoursPerDay: avail,
-        nextGoal: nextGoal
-      };
-
-      if (project.isDailyAllocation) {
-        const dailyMinutesInput = parentContainer.querySelector(`.edit-proj-daily-minutes[data-proj-id="${projId}"]`);
-        updates.dailyAllocationMinutes = dailyMinutesInput ? (Number(dailyMinutesInput.value) || 60) : project.dailyAllocationMinutes;
-      } else {
-        const effortInput = parentContainer.querySelector(`.edit-proj-effort[data-proj-id="${projId}"]`);
-        updates.estimatedHours = effortInput ? (Number(effortInput.value) || 0) : project.estimatedHours;
-      }
-      
-      await state.updateProject(projId, updates);
-      
-      alert("Project details saved successfully!");
-      renderProjects(container, state);
-    });
-  });
-
-  // H. Edit Project button
-  container.querySelectorAll('.edit-proj-btn').forEach(btn => {
-    btn.addEventListener('click', (e) => {
-      e.stopPropagation();
-      const projId = Number(btn.getAttribute('data-id'));
-      showEditProjectModal(projId, state, container);
-    });
-  });
-
-  // H2. Delete Project button
-  container.querySelectorAll('.delete-proj-btn').forEach(btn => {
-    btn.addEventListener('click', async (e) => {
-      e.stopPropagation();
-      const id = btn.getAttribute('data-id');
-      const project = state.projects.find(p => p.id === Number(id));
-      const projName = project ? `"${project.name}"` : 'this project';
-      if (confirm(`Are you sure you want to permanently delete ${projName}? This will not return.`)) {
-        await state.deleteProject(id);
-        showToast("Project deleted successfully");
-        renderProjects(container, state);
-      }
-    });
-  });
-
-  // H3. Category Filter & Clear Tasks in Category
-  const catFilterSelect = container.querySelector('#proj-category-filter-select');
-  if (catFilterSelect) {
-    catFilterSelect.addEventListener('change', () => {
-      const selected = catFilterSelect.value;
-      const rows = container.querySelectorAll('tr[data-proj-row-id]');
-      const cards = container.querySelectorAll('.project-mobile-card[data-proj-row-id]');
-      
-      rows.forEach(r => {
-        const type = r.getAttribute('data-proj-type') || 'flexible';
-        r.style.display = (selected === 'all' || type === selected) ? '' : 'none';
-      });
-      cards.forEach(c => {
-        const type = c.getAttribute('data-proj-type') || 'flexible';
-        c.style.display = (selected === 'all' || type === selected) ? 'flex' : 'none';
-      });
-    });
-  }
-
-  const clearCatTasksBtn = container.querySelector('#clear-cat-tasks-btn');
-  if (clearCatTasksBtn) {
-    clearCatTasksBtn.addEventListener('click', async () => {
-      const selected = catFilterSelect ? catFilterSelect.value : 'all';
-      const label = selected === 'all' ? 'All Categories' : selected;
-      if (confirm(`Are you sure you want to remove all tasks from projects in ${label}? This cannot be undone.`)) {
-        await state.clearCategoryTasks(selected);
-        showToast(`Cleared all tasks in ${label}`);
-        renderProjects(container, state);
-      }
-    });
-  }
 
   // I. Save New Project Form
   const saveNewProjBtn = container.querySelector('#save-new-proj-btn');
